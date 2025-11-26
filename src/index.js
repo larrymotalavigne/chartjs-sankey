@@ -1,12 +1,21 @@
-import { Chart, controllers, layouts } from 'chart.js';
+import { Chart, DatasetController, Element } from 'chart.js';
 
-const { BarController } = controllers;
-const { addBox, removeBox } = layouts;
+/**
+ * Flow element for Sankey diagrams
+ */
+class FlowElement extends Element {
+  draw(ctx) {
+    // Drawing is handled by the controller
+  }
+}
+
+FlowElement.id = 'flow';
+FlowElement.defaults = {};
 
 /**
  * Sankey Diagram Controller for Chart.js
  */
-export class SankeyController extends BarController {
+export class SankeyController extends DatasetController {
   static id = 'sankey';
   static defaults = {
     dataElementType: 'flow',
@@ -17,7 +26,36 @@ export class SankeyController extends BarController {
       }
     },
     maintainAspectRatio: false,
-    aspectRatio: 1
+    aspectRatio: 1,
+    scales: {
+      x: {
+        type: 'linear',
+        display: false
+      },
+      y: {
+        type: 'linear',
+        display: false
+      }
+    }
+  };
+
+  static overrides = {
+    plugins: {
+      legend: {
+        display: false
+      },
+      tooltip: {
+        enabled: false
+      }
+    },
+    scales: {
+      x: {
+        display: false
+      },
+      y: {
+        display: false
+      }
+    }
   };
 
   initialize() {
@@ -27,18 +65,25 @@ export class SankeyController extends BarController {
 
   update(mode) {
     const meta = this._cachedMeta;
-    this._updateElements(meta.data, 0, meta.data.length, mode);
+    const dataset = this.getDataset();
+    const data = dataset.data || [];
+
+    // Parse and build data elements
+    this.updateElements(meta.data, 0, data.length, mode);
   }
 
-  _updateElements(elements, start, count, mode) {
+  updateElements(elements, start, count, mode) {
     const dataset = this.getDataset();
     const data = dataset.data || [];
     const nodes = this._getNodes(data);
     const flows = this._calculateFlows(data, nodes);
 
+    // Store flows for drawing
+    this._flows = flows;
+
     for (let i = start; i < start + count; i++) {
       const flow = flows[i];
-      if (flow) {
+      if (flow && elements[i]) {
         const properties = {
           x: flow.x,
           y: flow.y,
@@ -47,7 +92,7 @@ export class SankeyController extends BarController {
           height: flow.height,
           color: flow.color || dataset.color || this._resolveColor(i)
         };
-        this.updateElement(elements[i], i, properties, mode);
+        Object.assign(elements[i], properties);
       }
     }
   }
@@ -212,14 +257,15 @@ export class SankeyController extends BarController {
 
   draw() {
     const { ctx } = this.chart;
-    const meta = this._cachedMeta;
 
     // Draw flows
-    meta.data.forEach((element, index) => {
-      if (element.x && element.x2) {
-        this._drawFlow(ctx, element);
-      }
-    });
+    if (this._flows) {
+      this._flows.forEach((flow) => {
+        if (flow && flow.x && flow.x2) {
+          this._drawFlow(ctx, flow);
+        }
+      });
+    }
 
     // Draw nodes
     if (this._nodePositions) {
@@ -264,7 +310,8 @@ export class SankeyController extends BarController {
   }
 }
 
-// Register the controller
-Chart.register(SankeyController);
+// Register the controller and element
+Chart.register(SankeyController, FlowElement);
 
 export default SankeyController;
+export { FlowElement };
