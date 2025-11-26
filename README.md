@@ -2,7 +2,7 @@
 
 A powerful Chart.js plugin for creating beautiful Sankey diagrams to visualize flow data.
 
-[![npm version](https://img.shields.io/npm/v/chartjs-plugin-sankey.svg)](https://www.npmjs.com/package/chartjs-plugin-sankey)
+[![npm version](https://img.shields.io/npm/v/@larrym/chartjs-plugin-sankey.svg)](https://www.npmjs.com/package/@larrym/chartjs-plugin-sankey)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ## Features
@@ -38,14 +38,14 @@ Energy Flow Sankey Diagram
 ### NPM
 
 ```bash
-npm install chartjs-plugin-sankey chart.js
+npm install @larrym/chartjs-plugin-sankey chart.js
 ```
 
 ### CDN
 
 ```html
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-sankey/dist/chartjs-plugin-sankey.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@larrym/chartjs-plugin-sankey/dist/chartjs-plugin-sankey.min.js"></script>
 ```
 
 ## Quick Start
@@ -62,7 +62,7 @@ npm install chartjs-plugin-sankey chart.js
   <canvas id="myChart"></canvas>
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-sankey"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@larrym/chartjs-plugin-sankey"></script>
 
   <script>
     const ctx = document.getElementById('myChart').getContext('2d');
@@ -90,7 +90,7 @@ npm install chartjs-plugin-sankey chart.js
 
 ```javascript
 import { Chart } from 'chart.js';
-import { SankeyController } from 'chartjs-plugin-sankey';
+import { SankeyController } from '@larrym/chartjs-plugin-sankey';
 
 Chart.register(SankeyController);
 
@@ -337,7 +337,7 @@ The plugin includes TypeScript definitions. Import and use with full type safety
 
 ```typescript
 import { Chart } from 'chart.js';
-import { SankeyController, SankeyDataPoint } from 'chartjs-plugin-sankey';
+import { SankeyController, SankeyDataPoint } from '@larrym/chartjs-plugin-sankey';
 
 Chart.register(SankeyController);
 

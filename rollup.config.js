@@ -5,7 +5,7 @@ import { readFileSync } from 'fs';
 
 const pkg = JSON.parse(readFileSync('./package.json', 'utf-8'));
 const banner = `/*!
- * chartjs-plugin-sankey
+ * @larrym/chartjs-plugin-sankey
  * Version: ${pkg.version}
  * Copyright (c) 2025
  * Licensed under MIT
