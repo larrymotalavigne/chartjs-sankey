@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Chart.js Sankey Plugin - Example</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+    h1 {
+      text-align: center;
+      color: #333;
+    }
+    .chart-container {
+      background: white;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      margin-bottom: 30px;
+    }
+    #sankeyChart {
+      max-width: 100%;
+      height: 500px;
+    }
+    .info {
+      background: #e3f2fd;
+      padding: 15px;
+      border-radius: 5px;
+      margin-bottom: 20px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Chart.js Sankey Diagram Example</h1>
+
+  <div class="info">
+    <h3>Energy Flow Visualization</h3>
+    <p>This Sankey diagram shows the flow of energy from sources through conversion to end uses.</p>
+  </div>
+
+  <div class="chart-container">
+    <canvas id="sankeyChart"></canvas>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="../dist/chartjs-plugin-sankey.js"></script>
+
+  <script>
+    const ctx = document.getElementById('sankeyChart').getContext('2d');
+
+    const data = {
+      datasets: [{
+        label: 'Energy Flow',
+        data: [
+          // Energy sources to conversion
+          { from: 'Oil', to: 'Energy', flow: 35, color: 'rgba(255, 99, 132, 0.5)' },
+          { from: 'Gas', to: 'Energy', flow: 23, color: 'rgba(54, 162, 235, 0.5)' },
+          { from: 'Coal', to: 'Energy', flow: 25, color: 'rgba(75, 75, 75, 0.5)' },
+          { from: 'Renewable', to: 'Energy', flow: 17, color: 'rgba(75, 192, 192, 0.5)' },
+
+          // Energy to sectors
+          { from: 'Energy', to: 'Industry', flow: 40, color: 'rgba(255, 206, 86, 0.5)' },
+          { from: 'Energy', to: 'Transport', flow: 30, color: 'rgba(153, 102, 255, 0.5)' },
+          { from: 'Energy', to: 'Residential', flow: 20, color: 'rgba(255, 159, 64, 0.5)' },
+          { from: 'Energy', to: 'Commercial', flow: 10, color: 'rgba(199, 199, 199, 0.5)' },
+        ],
+        colorMode: 'gradient',
+      }]
+    };
+
+    const config = {
+      type: 'sankey',
+      data: data,
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          title: {
+            display: true,
+            text: 'Energy Flow Sankey Diagram',
+            font: {
+              size: 18
+            }
+          },
+          legend: {
+            display: false
+          }
+        }
+      }
+    };
+
+    new Chart(ctx, config);
+  </script>
+</body>
+</html>
