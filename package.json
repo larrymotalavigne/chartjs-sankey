@@ -2,6 +2,7 @@
   "name": "chartjs-plugin-sankey",
   "version": "1.0.0",
   "description": "Chart.js plugin for creating Sankey diagrams",
+  "type": "module",
   "main": "dist/chartjs-plugin-sankey.js",
   "module": "dist/chartjs-plugin-sankey.esm.js",
   "types": "dist/index.d.ts",
