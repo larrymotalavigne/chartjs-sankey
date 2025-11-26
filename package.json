@@ -1,0 +1,48 @@
+{
+  "name": "chartjs-plugin-sankey",
+  "version": "1.0.0",
+  "description": "Chart.js plugin for creating Sankey diagrams",
+  "main": "dist/chartjs-plugin-sankey.js",
+  "module": "dist/chartjs-plugin-sankey.esm.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "src"
+  ],
+  "scripts": {
+    "build": "rollup -c",
+    "dev": "rollup -c -w",
+    "prepare": "npm run build"
+  },
+  "keywords": [
+    "chart.js",
+    "chartjs",
+    "sankey",
+    "diagram",
+    "flow",
+    "visualization",
+    "plugin"
+  ],
+  "author": "",
+  "license": "MIT",
+  "peerDependencies": {
+    "chart.js": "^4.0.0"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.23.0",
+    "@babel/preset-env": "^7.23.0",
+    "@rollup/plugin-babel": "^6.0.4",
+    "@rollup/plugin-node-resolve": "^15.2.3",
+    "@rollup/plugin-terser": "^0.4.4",
+    "chart.js": "^4.4.0",
+    "rollup": "^4.9.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/larrymotalavigne/chartjs-sankey.git"
+  },
+  "bugs": {
+    "url": "https://github.com/larrymotalavigne/chartjs-sankey/issues"
+  },
+  "homepage": "https://github.com/larrymotalavigne/chartjs-sankey#readme"
+}
