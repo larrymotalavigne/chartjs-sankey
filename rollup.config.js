@@ -1,10 +1,12 @@
 import resolve from '@rollup/plugin-node-resolve';
 import babel from '@rollup/plugin-babel';
 import terser from '@rollup/plugin-terser';
+import { readFileSync } from 'fs';
 
+const pkg = JSON.parse(readFileSync('./package.json', 'utf-8'));
 const banner = `/*!
  * chartjs-plugin-sankey
- * Version: ${require('./package.json').version}
+ * Version: ${pkg.version}
  * Copyright (c) 2025
  * Licensed under MIT
  */`;
