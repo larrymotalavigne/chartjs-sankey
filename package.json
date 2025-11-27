@@ -13,7 +13,8 @@
   "scripts": {
     "build": "rollup -c",
     "dev": "rollup -c -w",
-    "prepare": "npm run build"
+    "prepare": "npm run build",
+    "test": "echo \"No tests specified yet\" && exit 0"
   },
   "keywords": [
     "chart.js",
