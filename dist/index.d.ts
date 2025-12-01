@@ -28,4 +28,13 @@ export class SankeyController {
   static defaults: any;
 }
 
+export class FlowElement {
+  static id: 'flow';
+  static defaults: any;
+  draw(ctx: CanvasRenderingContext2D): void;
+}
+
+// Alias for convenience
+export { FlowElement as Flow };
+
 export default SankeyController;
