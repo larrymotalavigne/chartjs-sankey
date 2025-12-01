@@ -1,6 +1,6 @@
 {
   "name": "@larrym/chartjs-plugin-sankey",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "Chart.js plugin for creating Sankey diagrams",
   "type": "module",
   "main": "dist/chartjs-plugin-sankey.js",
