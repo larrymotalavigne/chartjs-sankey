@@ -31,8 +31,6 @@ Energy Flow Sankey Diagram
                                         └──► Commercial
 ```
 
-![Sankey Diagram Example](examples/sankey-example.png)
-
 ## Installation
 
 ### NPM
@@ -277,8 +275,7 @@ chartjs-sankey/
 ├── dist/
 │   ├── chartjs-plugin-sankey.js      # UMD build
 │   ├── chartjs-plugin-sankey.min.js  # Minified UMD build
-│   ├── chartjs-plugin-sankey.esm.js  # ES module build
-│   └── index.d.ts                     # TypeScript definitions
+│   └── chartjs-plugin-sankey.esm.js  # ES module build
 ├── examples/
 │   └── index.html        # Live examples
 ├── .github/
@@ -290,37 +287,21 @@ chartjs-sankey/
 
 ## Publishing
 
-The package is automatically published to NPM when a new release is created on GitHub.
+The package is automatically published to NPM when a new GitHub release is created, or via manual workflow dispatch.
 
-### Manual Publishing
+### Setup
 
-To publish manually:
+1. Add an NPM access token to GitHub secrets as `NPM_TOKEN`
+2. Ensure the `npm-publish` environment exists in your GitHub repo settings
 
-1. Ensure you have NPM publishing rights
-2. Create an NPM token and add it to GitHub secrets as `NPM_TOKEN`
-3. Create a new release on GitHub, or use the workflow dispatch
-
-### Using GitHub Actions
-
-The repository includes two workflows:
+### Workflows
 
 1. **CI** (`.github/workflows/ci.yml`) - Runs on every push and PR
-   - Builds the project
-   - Runs on Node.js 18.x and 20.x
+   - Builds and tests on Node.js 18.x, 20.x, 22.x, 24.x
 
 2. **Publish** (`.github/workflows/publish.yml`) - Publishes to NPM
-   - Triggered on new releases
-   - Can be manually triggered with version bump (patch/minor/major)
-
-To publish a new version:
-
-```bash
-# Via GitHub UI
-1. Go to Actions tab
-2. Select "Publish to NPM" workflow
-3. Click "Run workflow"
-4. Select version bump type (patch/minor/major)
-```
+   - Triggered on new GitHub releases or manual workflow dispatch
+   - Uses `--provenance` for supply chain attestation
 
 ## Browser Support
 

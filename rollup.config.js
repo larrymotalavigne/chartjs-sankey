@@ -19,6 +19,7 @@ export default [
         file: 'dist/chartjs-plugin-sankey.js',
         format: 'umd',
         name: 'ChartSankey',
+        exports: 'named',
         banner,
         globals: {
           'chart.js': 'Chart'
@@ -28,6 +29,7 @@ export default [
         file: 'dist/chartjs-plugin-sankey.min.js',
         format: 'umd',
         name: 'ChartSankey',
+        exports: 'named',
         banner,
         plugins: [terser()],
         globals: {

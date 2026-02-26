@@ -1,11 +1,11 @@
 {
   "name": "@larrym/chartjs-plugin-sankey",
-  "version": "2.0.1",
+  "version": "3.0.0",
   "description": "Chart.js plugin for creating Sankey diagrams",
   "type": "module",
   "main": "dist/chartjs-plugin-sankey.js",
   "module": "dist/chartjs-plugin-sankey.esm.js",
-  "types": "dist/index.d.ts",
+  "types": "src/index.d.ts",
   "files": [
     "dist",
     "src"
@@ -14,7 +14,8 @@
     "build": "rollup -c",
     "dev": "rollup -c -w",
     "prepare": "npm run build",
-    "test": "echo \"No tests specified yet\" && exit 0"
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "keywords": [
     "chart.js",
@@ -37,7 +38,8 @@
     "@rollup/plugin-node-resolve": "^15.2.3",
     "@rollup/plugin-terser": "^0.4.4",
     "chart.js": "^4.4.0",
-    "rollup": "^4.9.0"
+    "rollup": "^4.9.0",
+    "vitest": "^3.2.4"
   },
   "repository": {
     "type": "git",

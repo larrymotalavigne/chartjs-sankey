@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Chart.js Sankey Plugin - Example</title>
+  <title>Chart.js Sankey Plugin - Examples</title>
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -12,10 +12,8 @@
       padding: 20px;
       background: #f5f5f5;
     }
-    h1 {
-      text-align: center;
-      color: #333;
-    }
+    h1, h2 { color: #333; }
+    h1 { text-align: center; }
     .chart-container {
       background: white;
       padding: 20px;
@@ -23,78 +21,246 @@
       box-shadow: 0 2px 4px rgba(0,0,0,0.1);
       margin-bottom: 30px;
     }
-    #sankeyChart {
-      max-width: 100%;
-      height: 500px;
-    }
+    canvas { max-width: 100%; height: 400px; }
     .info {
       background: #e3f2fd;
       padding: 15px;
       border-radius: 5px;
       margin-bottom: 20px;
     }
+    code {
+      background: #f0f0f0;
+      padding: 2px 6px;
+      border-radius: 3px;
+      font-size: 0.9em;
+    }
+    #clickLog {
+      background: #fff;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      padding: 10px;
+      font-family: monospace;
+      font-size: 13px;
+      max-height: 80px;
+      overflow-y: auto;
+      margin-top: 10px;
+    }
   </style>
 </head>
 <body>
-  <h1>Chart.js Sankey Diagram Example</h1>
+  <h1>Chart.js Sankey Diagram Examples</h1>
 
+  <!-- Example 1: Basic with tooltips and hover -->
   <div class="info">
-    <h3>Energy Flow Visualization</h3>
-    <p>This Sankey diagram shows the flow of energy from sources through conversion to end uses.</p>
+    <h3>1. Energy Flow (hover + tooltips)</h3>
+    <p>Hover over any flow to see a tooltip. Non-hovered flows dim automatically.
+       Hover over a <strong>node</strong> to highlight all connected flows and dim the rest.</p>
+  </div>
+  <div class="chart-container">
+    <canvas id="basicChart"></canvas>
   </div>
 
+  <!-- Example 2: Gradient mode + nodeColors + custom labels -->
+  <div class="info">
+    <h3>2. Budget Allocation (gradient + nodeColors)</h3>
+    <p>Uses <code>colorMode: 'gradient'</code> with a <code>nodeColors</code> map.
+       Flow colors transition from source node color to destination node color.
+       Labels show values via <code>labels.formatter</code>.</p>
+  </div>
   <div class="chart-container">
-    <canvas id="sankeyChart"></canvas>
+    <canvas id="gradientChart"></canvas>
+  </div>
+
+  <!-- Example 3: Styled nodes + click events -->
+  <div class="info">
+    <h3>3. Customer Journey (click events + styled nodes)</h3>
+    <p>Click on flows or nodes. Uses <code>nodeColor</code> callback, <code>nodeBorderRadius</code>,
+       <code>colorMode: 'to'</code>, and <code>flowLabels</code>.</p>
+  </div>
+  <div class="chart-container">
+    <canvas id="styledChart"></canvas>
+    <div id="clickLog">Click a flow or node...</div>
+  </div>
+
+  <!-- Example 4: Vertical layout + manual column pinning -->
+  <div class="info">
+    <h3>4. Process Flow (vertical + pinned columns)</h3>
+    <p>Uses <code>orientation: 'vertical'</code> and <code>nodes: { 'QA': { column: 2 } }</code>
+       to pin a node to a specific row.</p>
+  </div>
+  <div class="chart-container">
+    <canvas id="verticalChart" style="height: 500px;"></canvas>
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
   <script src="../dist/chartjs-plugin-sankey.js"></script>
 
   <script>
-    const ctx = document.getElementById('sankeyChart').getContext('2d');
-
-    const data = {
-      datasets: [{
-        label: 'Energy Flow',
-        data: [
-          // Energy sources to conversion
-          { from: 'Oil', to: 'Energy', flow: 35, color: 'rgba(255, 99, 132, 0.5)' },
-          { from: 'Gas', to: 'Energy', flow: 23, color: 'rgba(54, 162, 235, 0.5)' },
-          { from: 'Coal', to: 'Energy', flow: 25, color: 'rgba(75, 75, 75, 0.5)' },
-          { from: 'Renewable', to: 'Energy', flow: 17, color: 'rgba(75, 192, 192, 0.5)' },
-
-          // Energy to sectors
-          { from: 'Energy', to: 'Industry', flow: 40, color: 'rgba(255, 206, 86, 0.5)' },
-          { from: 'Energy', to: 'Transport', flow: 30, color: 'rgba(153, 102, 255, 0.5)' },
-          { from: 'Energy', to: 'Residential', flow: 20, color: 'rgba(255, 159, 64, 0.5)' },
-          { from: 'Energy', to: 'Commercial', flow: 10, color: 'rgba(199, 199, 199, 0.5)' },
-        ],
-        colorMode: 'gradient',
-      }]
-    };
-
-    const config = {
+    // ── 1. Basic ──
+    new Chart(document.getElementById('basicChart'), {
       type: 'sankey',
-      data: data,
+      data: {
+        datasets: [{
+          data: [
+            { from: 'Oil', to: 'Energy', flow: 35, color: 'rgba(255, 99, 132, 0.5)' },
+            { from: 'Gas', to: 'Energy', flow: 23, color: 'rgba(54, 162, 235, 0.5)' },
+            { from: 'Coal', to: 'Energy', flow: 25, color: 'rgba(75, 75, 75, 0.5)' },
+            { from: 'Renewable', to: 'Energy', flow: 17, color: 'rgba(75, 192, 192, 0.5)' },
+            { from: 'Energy', to: 'Industry', flow: 40, color: 'rgba(255, 206, 86, 0.5)' },
+            { from: 'Energy', to: 'Transport', flow: 30, color: 'rgba(153, 102, 255, 0.5)' },
+            { from: 'Energy', to: 'Residential', flow: 20, color: 'rgba(255, 159, 64, 0.5)' },
+            { from: 'Energy', to: 'Commercial', flow: 10, color: 'rgba(199, 199, 199, 0.5)' },
+          ]
+        }]
+      },
       options: {
         responsive: true,
         maintainAspectRatio: false,
         plugins: {
-          title: {
-            display: true,
-            text: 'Energy Flow Sankey Diagram',
-            font: {
-              size: 18
-            }
+          title: { display: true, text: 'Energy Flow Sankey Diagram', font: { size: 18 } }
+        }
+      }
+    });
+
+    // ── 2. Gradient + nodeColors ──
+    new Chart(document.getElementById('gradientChart'), {
+      type: 'sankey',
+      data: {
+        datasets: [{
+          colorMode: 'gradient',
+          nodeColors: {
+            'Budget': '#3F51B5',
+            'Development': '#2196F3',
+            'Marketing': '#E91E63',
+            'Operations': '#009688',
+            'Frontend': '#03A9F4',
+            'Backend': '#7C4DFF',
+            'Digital': '#FF5252',
+            'Traditional': '#FF9800'
           },
-          legend: {
-            display: false
+          data: [
+            { from: 'Budget', to: 'Development', flow: 50000 },
+            { from: 'Budget', to: 'Marketing', flow: 30000 },
+            { from: 'Budget', to: 'Operations', flow: 20000 },
+            { from: 'Development', to: 'Frontend', flow: 30000 },
+            { from: 'Development', to: 'Backend', flow: 20000 },
+            { from: 'Marketing', to: 'Digital', flow: 20000 },
+            { from: 'Marketing', to: 'Traditional', flow: 10000 },
+          ],
+          nodeBorderRadius: 4,
+          labels: {
+            formatter: (nodeId, node) => `${nodeId} ($${(node.value / 1000).toFixed(0)}k)`
+          }
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          title: { display: true, text: 'Budget Allocation (Gradient + Node Colors)', font: { size: 18 } },
+          tooltip: {
+            callbacks: {
+              label: (item) => {
+                const dp = item.raw;
+                return `${dp.from} \u2192 ${dp.to}: $${dp.flow.toLocaleString()}`;
+              }
+            }
           }
         }
       }
-    };
+    });
 
-    new Chart(ctx, config);
+    // ── 3. Styled nodes + click events ──
+    const nodeColorMap = {
+      'Website': '#4CAF50', 'Social Media': '#2196F3', 'Product Page': '#FF9800',
+      'Cart': '#9C27B0', 'Checkout': '#E91E63', 'Purchase': '#4CAF50', 'Exit': '#F44336'
+    };
+    const logEl = document.getElementById('clickLog');
+    new Chart(document.getElementById('styledChart'), {
+      type: 'sankey',
+      data: {
+        datasets: [{
+          colorMode: 'to',
+          nodeColors: nodeColorMap,
+          data: [
+            { from: 'Website', to: 'Product Page', flow: 1000 },
+            { from: 'Social Media', to: 'Product Page', flow: 500 },
+            { from: 'Product Page', to: 'Cart', flow: 600 },
+            { from: 'Product Page', to: 'Exit', flow: 900 },
+            { from: 'Cart', to: 'Checkout', flow: 400 },
+            { from: 'Cart', to: 'Exit', flow: 200 },
+            { from: 'Checkout', to: 'Purchase', flow: 350 },
+            { from: 'Checkout', to: 'Exit', flow: 50 },
+          ],
+          nodeColor: (id) => nodeColorMap[id] || '#333',
+          nodeBorderColor: '#000',
+          nodeBorderWidth: 1,
+          nodeBorderRadius: 6,
+          nodeWidth: 24,
+          flowLabels: {
+            display: true,
+            color: 'rgba(0,0,0,0.6)',
+            font: { size: 11 }
+          },
+          onFlowClick: (flow, e) => {
+            logEl.textContent = `Flow clicked: ${flow.from} \u2192 ${flow.to} (${flow.flow})`;
+          },
+          onNodeClick: (nodeId, node, e) => {
+            logEl.textContent = `Node clicked: ${nodeId} (value: ${node.value})`;
+          }
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          title: { display: true, text: 'Customer Journey (Click + Flow Labels)', font: { size: 18 } },
+          tooltip: {
+            callbacks: {
+              label: (item) => {
+                const dp = item.raw;
+                return [`${dp.from} \u2192 ${dp.to}`, `Users: ${dp.flow.toLocaleString()}`];
+              }
+            }
+          }
+        }
+      }
+    });
+
+    // ── 4. Vertical layout + pinned columns ──
+    new Chart(document.getElementById('verticalChart'), {
+      type: 'sankey',
+      data: {
+        datasets: [{
+          orientation: 'vertical',
+          nodes: {
+            'QA': { column: 2 }
+          },
+          data: [
+            { from: 'Requirements', to: 'Design', flow: 100, color: 'rgba(54, 162, 235, 0.5)' },
+            { from: 'Design', to: 'Implement', flow: 80, color: 'rgba(75, 192, 192, 0.5)' },
+            { from: 'Design', to: 'QA', flow: 20, color: 'rgba(255, 206, 86, 0.5)' },
+            { from: 'Implement', to: 'QA', flow: 70, color: 'rgba(153, 102, 255, 0.5)' },
+            { from: 'Implement', to: 'Deploy', flow: 10, color: 'rgba(255, 159, 64, 0.5)' },
+            { from: 'QA', to: 'Deploy', flow: 75, color: 'rgba(255, 99, 132, 0.5)' },
+            { from: 'QA', to: 'Implement', flow: 15, color: 'rgba(199, 199, 199, 0.5)' },
+          ],
+          nodeBorderRadius: 3,
+          nodeBorderWidth: 1,
+          nodeBorderColor: '#555',
+          labels: {
+            font: { size: 13 }
+          }
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          title: { display: true, text: 'Software Process (Vertical Layout)', font: { size: 18 } }
+        }
+      }
+    });
   </script>
 </body>
 </html>

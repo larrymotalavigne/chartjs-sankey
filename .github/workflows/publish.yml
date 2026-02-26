@@ -7,7 +7,7 @@ on:
 
 permissions:
   contents: read
-  id-token: write  # Required for OIDC trusted publishing
+  id-token: write  # Required for --provenance attestation
 
 jobs:
   publish:
