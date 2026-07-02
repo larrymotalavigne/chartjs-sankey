@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Overview
 
-**chartjs-sankey** (`@larrym/chartjs-plugin-sankey`) is a Chart.js 4.x plugin for rendering Sankey diagrams. It registers a custom `'sankey'` chart type with two components: `SankeyController` (layout + rendering) and `FlowElement` (Chart.js element for individual flow bands).
+**chartjs-sankey** is a Chart.js 4.x plugin for rendering Sankey diagrams, published on npm as **`@larrym/chartjs-plugin-sankey`** (current version **3.0.0** per `package.json`). It registers a custom `'sankey'` chart type with two components: `SankeyController` (layout + rendering) and `FlowElement` (Chart.js element for individual flow bands).
 
 ## Commands
 
@@ -65,7 +65,9 @@ Internal helpers: `adjustAlpha`, `drawRoundedRect`, `resolveNodeColor`.
 
 ## Testing
 
-Tests use Vitest and cover utility functions (including column pin overrides), FlowElement hit testing (both orientations), and element geometry. Controller integration tests require a canvas/Chart.js instance and are not currently implemented.
+Tests use Vitest and cover utility functions (including column pin overrides), FlowElement hit testing (both orientations), and element geometry.
+
+**TODO:** `SankeyController` integration tests are NOT implemented — they'd require a canvas/Chart.js instance (jsdom + canvas mock or a real browser runner). Controller layout/draw changes are currently untested; verify manually.
 
 ## CI/CD
 
