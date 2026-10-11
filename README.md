@@ -43,8 +43,21 @@ npm install @larrym/chartjs-plugin-sankey chart.js
 
 ```html
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@larrym/chartjs-plugin-sankey/dist/chartjs-plugin-sankey.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@larrym/chartjs-plugin-sankey@3/dist/chartjs-plugin-sankey.min.js"></script>
 ```
+
+The browser build registers the `sankey` chart type automatically and exposes
+the API on the `ChartSankey` global.
+
+### Module formats
+
+| Consumer | Entry point |
+|----------|-------------|
+| `import` (bundlers, Node ESM) | `dist/chartjs-plugin-sankey.esm.js` |
+| `require()` (Node CJS, Jest…) | `dist/chartjs-plugin-sankey.cjs` |
+| `<script>` (CDN) | `dist/chartjs-plugin-sankey.min.js` (UMD) |
+
+TypeScript declarations are included for both `import` and `require`.
 
 ## Quick Start
 
@@ -266,6 +279,15 @@ npm run build
 npm run dev
 ```
 
+### Checks
+
+```bash
+npm run lint          # ESLint
+npm test              # Unit tests (Vitest)
+npm run test:types    # Type declaration tests (needs a build)
+npm run test:package  # CJS/ESM/UMD smoke test, publint, arethetypeswrong (needs a build)
+```
+
 ### Project Structure
 
 ```
@@ -275,7 +297,9 @@ chartjs-sankey/
 ├── dist/
 │   ├── chartjs-plugin-sankey.js      # UMD build
 │   ├── chartjs-plugin-sankey.min.js  # Minified UMD build
-│   └── chartjs-plugin-sankey.esm.js  # ES module build
+│   ├── chartjs-plugin-sankey.esm.js  # ES module build
+│   ├── chartjs-plugin-sankey.cjs     # CommonJS build
+│   └── chartjs-plugin-sankey.d.ts    # Type declarations (+ .d.cts)
 ├── examples/
 │   └── index.html        # Live examples
 ├── .github/
@@ -340,7 +364,7 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## License
 
-MIT © 2025
+MIT © 2025-2026 Larry Mota--Lavigne
 
 ## Acknowledgments
 

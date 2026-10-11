@@ -215,7 +215,7 @@ export function reorderNodes(nodesByLevel, data) {
 /**
  * Resolve the display color for a node.
  */
-function resolveNodeColor(nodeId, dataset, nodeIndex) {
+function resolveNodeColor(nodeId, dataset) {
   if (dataset.nodeColors && dataset.nodeColors[nodeId]) {
     return dataset.nodeColors[nodeId];
   }
@@ -579,9 +579,8 @@ export class SankeyController extends DatasetController {
 
     // Resolve node colors for colorMode usage
     const resolvedColors = new Map();
-    let idx = 0;
     for (const id of nodes.keys()) {
-      resolvedColors.set(id, resolveNodeColor(id, dataset, idx++));
+      resolvedColors.set(id, resolveNodeColor(id, dataset));
     }
     this._resolvedNodeColors = resolvedColors;
 

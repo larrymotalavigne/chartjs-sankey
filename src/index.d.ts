@@ -1,4 +1,9 @@
-import { ChartType, Element } from 'chart.js';
+import { Element } from 'chart.js';
+import type {
+  CartesianScaleTypeRegistry,
+  ControllerDatasetOptions,
+  CoreChartOptions
+} from 'chart.js';
 
 export interface SankeyDataPoint {
   from: string;
@@ -44,7 +49,7 @@ export interface SankeyFlowLabelOptions {
   formatter?: ((value: number, flow: SankeyDataPoint) => string) | null;
 }
 
-export interface SankeyControllerDatasetOptions {
+export interface SankeyControllerDatasetOptions extends ControllerDatasetOptions {
   data: SankeyDataPoint[];
   color?: string;
   /** 'from' uses source node color; 'to' uses destination node color; 'gradient' applies a horizontal gradient */
@@ -76,10 +81,12 @@ export interface SankeyControllerDatasetOptions {
 declare module 'chart.js' {
   interface ChartTypeRegistry {
     sankey: {
-      chartOptions: {};
+      chartOptions: CoreChartOptions<'sankey'>;
       datasetOptions: SankeyControllerDatasetOptions;
       defaultDataPoint: SankeyDataPoint;
-      scales: {};
+      metaExtensions: {};
+      parsedDataType: SankeyDataPoint;
+      scales: keyof CartesianScaleTypeRegistry;
     };
   }
 }

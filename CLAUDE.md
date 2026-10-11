@@ -9,22 +9,26 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commands
 
 ```bash
-npm run build        # Rollup → dist/ (UMD, UMD min, ESM)
+npm run build        # Rollup → dist/ (UMD, UMD min, CJS, ESM, .d.ts/.d.cts)
 npm run dev          # Rollup watch mode
+npm run lint         # ESLint (flat config, eslint.config.js)
 npm test             # Vitest (single run)
 npm run test:watch   # Vitest (watch mode)
+npm run test:types   # tsc on test/types/ fixtures (needs a build)
+npm run test:package # scripts/smoke-test.cjs + publint + attw (needs a build)
 ```
 
-No linting or formatting configured.
+No formatter configured.
 
 ## Build
 
-Rollup builds three outputs from `src/index.js` into `dist/`:
-- `chartjs-plugin-sankey.js` (UMD, `exports: 'named'`)
-- `chartjs-plugin-sankey.min.js` (UMD, terser)
-- `chartjs-plugin-sankey.esm.js` (ES module)
+Rollup builds four outputs from `src/index.js` into `dist/`:
+- `chartjs-plugin-sankey.js` (UMD, `exports: 'named'`) — CDN / `<script>`
+- `chartjs-plugin-sankey.min.js` (UMD, terser) — CDN / `<script>`, `unpkg`/`jsdelivr` fields
+- `chartjs-plugin-sankey.cjs` (CommonJS) — `main`, `exports.require`
+- `chartjs-plugin-sankey.esm.js` (ES module) — `module`, `exports.import`
 
-`chart.js` is an external peer dependency (not bundled). TypeScript definitions are hand-maintained in `src/index.d.ts`.
+The package is `"type": "module"`, so the UMD `.js` files only work as classic scripts; Node `require()` must go through the `.cjs` build. `chart.js` is an external peer dependency (not bundled). TypeScript definitions are hand-maintained in `src/index.d.ts` and copied to `dist/chartjs-plugin-sankey.d.ts` / `.d.cts` by a Rollup plugin.
 
 ## Architecture
 
@@ -65,11 +69,13 @@ Internal helpers: `adjustAlpha`, `drawRoundedRect`, `resolveNodeColor`.
 
 ## Testing
 
-Tests use Vitest and cover utility functions (including column pin overrides), FlowElement hit testing (both orientations), and element geometry.
+Tests use Vitest and cover utility functions (including column pin overrides), FlowElement hit testing (both orientations), and element geometry. `test/types/usage.ts` is compile-only (run with `npm run test:types`). `scripts/smoke-test.cjs` loads the built package via `require`, `import` and the UMD builds.
 
 **TODO:** `SankeyController` integration tests are NOT implemented — they'd require a canvas/Chart.js instance (jsdom + canvas mock or a real browser runner). Controller layout/draw changes are currently untested; verify manually.
 
 ## CI/CD
 
-- **ci.yml**: builds + tests on Node 18/20/22/24, uploads dist/ artifact on Node 20
-- **publish.yml**: on GitHub release → npm publish with `--provenance` attestation
+- **ci.yml**: lint, build, tests, type tests and package checks on Node 22/24/26, uploads dist/ artifact on Node 22
+- **publish.yml**: on GitHub release → same checks, then npm publish with `--provenance` attestation
+
+See `ROADMAP.md` for the plan towards a stable release and `CHANGELOG.md` for release notes.

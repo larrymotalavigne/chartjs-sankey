@@ -71,16 +71,20 @@ préversion. Estimations pour un développeur, à temps partiel.
 ### Jalon A — Packaging & fondations (≈ 1 semaine) → `3.1.0`
 Corrige l'installabilité sans casser l'API.
 
-- [ ] **P1/P2** Sorties Rollup : `dist/chartjs-plugin-sankey.esm.js` (ESM),
+- [x] **P1/P2** Sorties Rollup : `dist/chartjs-plugin-sankey.esm.js` (ESM),
       `dist/chartjs-plugin-sankey.cjs` (CJS), `dist/chartjs-plugin-sankey.umd.min.js`
       (CDN). Ajouter `exports` (`import` / `require` / `types`), `unpkg`/`jsdelivr`,
       `sideEffects`.
-- [ ] Générer/copier les types dans `dist/` (`index.d.ts` + `index.d.cts`).
-- [ ] Vérifier le paquet en CI avec `publint` et `@arethetypeswrong/cli`, plus
+      *Fait : sorties `.esm.js` / `.cjs` / UMD (noms UMD conservés pour ne pas
+      casser les URL CDN existantes), `exports`, `unpkg`/`jsdelivr`.
+      `sideEffects` reporté au jalon C : l'import ESM enregistre le contrôleur,
+      déclarer `false` laisserait les bundlers supprimer cet import.*
+- [x] Générer/copier les types dans `dist/` (`index.d.ts` + `index.d.cts`).
+- [x] Vérifier le paquet en CI avec `publint` et `@arethetypeswrong/cli`, plus
       un smoke test `require()` / `import` / `<script>` sur l'archive `npm pack`.
-- [ ] **P15** ESLint + Prettier, `npm run lint` en CI ; matrice Node 22/24/26 ;
+- [x] **P15** ESLint + Prettier, `npm run lint` en CI ; matrice Node 22/24/26 ;
       renseigner `author`, `LICENSE`, `engines`.
-- [ ] Ajouter `CHANGELOG.md` (format Keep a Changelog) en reprenant 2.0.0 → 3.0.0.
+- [x] Ajouter `CHANGELOG.md` (format Keep a Changelog) en reprenant 2.0.0 → 3.0.0.
 
 ### Jalon B — Filet de sécurité : tests (≈ 1–2 semaines) → interne
 À faire **avant** les refontes du jalon C pour détecter les régressions.
@@ -93,7 +97,7 @@ Corrige l'installabilité sans casser l'API.
       `destroy()`, multi-datasets.
 - [ ] Tests de régression visuelle (snapshots PNG) sur 5–6 diagrammes de
       référence (énergie, budget, parcours client, vertical, gradient, cycle).
-- [ ] **P9** Tests de types (`tsd` ou `tsc --noEmit` sur des fixtures).
+- [x] **P9** Tests de types (`tsd` ou `tsc --noEmit` sur des fixtures).
 - [ ] Seuil de couverture en CI (ex. 85 % lignes sur `src/`).
 
 ### Jalon C — Stabilisation de l'API (≈ 2–3 semaines) → `4.0.0-beta.1`
