@@ -102,7 +102,7 @@ Corrige l'installabilité sans casser l'API.
 - [ ] Tests de régression visuelle (snapshots PNG) sur 5–6 diagrammes de
       référence (énergie, budget, parcours client, vertical, gradient, cycle).
 - [x] **P9** Tests de types (`tsd` ou `tsc --noEmit` sur des fixtures).
-- [x] Seuil de couverture en CI (ex. 85 % lignes sur `src/`).
+- [x] Seuil de couverture en CI (90 % lignes, 75 % branches : V8 compte les branches différemment selon la version de Node).
 
 ### Jalon C — Stabilisation de l'API (≈ 2–3 semaines) → `4.0.0-beta.1`
 Les changements cassants sont regroupés ici, une seule fois.
