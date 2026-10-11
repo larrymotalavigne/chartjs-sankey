@@ -27,7 +27,7 @@ function copyTypes() {
   };
 }
 
-const umdGlobals = { 'chart.js': 'Chart' };
+const umdGlobals = { 'chart.js': 'Chart', 'chart.js/helpers': 'Chart.helpers' };
 
 export default [
   {
@@ -65,7 +65,7 @@ export default [
         banner
       }
     ],
-    external: ['chart.js'],
+    external: ['chart.js', 'chart.js/helpers'],
     plugins: [
       resolve(),
       babel({

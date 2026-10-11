@@ -104,31 +104,34 @@ Corrige l'installabilité sans casser l'API.
 - [x] **P9** Tests de types (`tsd` ou `tsc --noEmit` sur des fixtures).
 - [x] Seuil de couverture en CI (90 % lignes, 75 % branches : V8 compte les branches différemment selon la version de Node).
 
-### Jalon C — Stabilisation de l'API (≈ 2–3 semaines) → `4.0.0-beta.1`
-Les changements cassants sont regroupés ici, une seule fois.
+### Jalon C — Stabilisation de l'API → `4.0.0-beta.1` ✅
+Les changements cassants sont regroupés ici, une seule fois (détails dans
+`MIGRATION.md`).
 
-- [ ] **P3** Résolution des options via le résolveur Chart.js
-      (`this.resolveDataElementOptions` / `this.options`) : prise en compte de
-      `Chart.defaults.datasets.sankey` et `options.datasets.sankey`, options
-      scriptables là où c'est utile (`nodeColor`, `nodeBorderColor`, couleurs de
-      flux). Déclarer `_scriptable`/`_indexable` pour les callbacks
-      (`formatter`, `onFlowClick`, `onNodeClick`) afin qu'ils ne soient pas
-      appelés comme options scriptables.
-- [ ] **P4** Événements via le système Chart.js (plugin interne `afterEvent`
-      ou `options.onClick` + `getElementsAtEventForMode`) : tactile,
-      `options.events`, coordonnées correctes, suppression des flags sur
-      `chart`. Exposer les nœuds au tooltip (survol de nœud = total entrant/sortant).
-- [ ] **P13/P14** Nettoyage des defaults/overrides ; décider de
-      l'auto-enregistrement : conserver pour l'UMD, le retirer de l'ESM/CJS
-      (l'utilisateur appelle `Chart.register(SankeyController, FlowElement)`),
-      documenté dans le guide de migration.
-- [ ] **P10** Modèle de couleurs unifié et documenté : palette par défaut des
-      nœuds, `colorMode` cohérent quel que soit le moyen de définir la couleur
-      du nœud (`nodeColors`, `nodeColor` string/callback).
-- [ ] Revue finale des noms d'options (ex. `nodes` → `nodeConfig` ?,
-      `labels.position` complet `'top' | 'bottom' | 'left' | 'right' | 'auto'`),
-      puis **gel de l'API** : tout ce qui est exporté et typé est public, le
-      reste préfixé `_` est privé.
+- [x] **P3** Résolution des options par couches : defaults du plugin →
+      `Chart.defaults.datasets.sankey` → `options.datasets.sankey` → dataset
+      (`labels`/`flowLabels` fusionnés en profondeur).
+      *Choix : lecture des valeurs brutes plutôt que via `this.options`, dont
+      le proxy appellerait `formatter`, `nodeColor`, `onFlowClick`… comme des
+      options scriptables. Pas d'options scriptables « contexte Chart.js » :
+      les callbacks gardent leurs signatures explicites.*
+- [x] **P4** Événements via Chart.js (`SankeyPlugin`, hook `afterEvent`) :
+      tactile, `options.events`, coordonnées correctes, plus de flags sur
+      `chart`, plus de perte des clics au retrait d'un dataset.
+      *Reporté après la 4.0 : tooltip au survol d'un nœud (non cassant).*
+- [x] **P13/P14** Defaults nettoyés (`maintainAspectRatio`/`aspectRatio`
+      retirés, échelles cachées déclarées dans les overrides).
+      *Décision : l'enregistrement automatique est conservé pour tous les
+      formats (contrôleur, élément, plugin, `LinearScale`). Le plugin n'agit
+      que sur les graphiques sankey ; un enregistrement manuel reste possible.*
+- [x] **P10** Modèle de couleurs unifié : palette par défaut des nœuds,
+      `colorMode` appliqué quelle que soit la source de la couleur du nœud,
+      couleurs dérivées à 50 % d'opacité (parsing via `chart.js/helpers`).
+- [x] Revue des options : `labels.position` complété avec `'bottom'`,
+      callbacks `nodeColor`/`nodeBorderColor` reçoivent `(id, node)`. `nodes`
+      conservé tel quel (renommer n'apportait que de la migration).
+      **API gelée** : ce qui est exporté et typé est public, le reste préfixé
+      `_` est privé.
 
 ### Jalon D — Robustesse du rendu (≈ 1–2 semaines) → `4.0.0-beta.2`
 - [x] **P5** Mesure des labels (`ctx.measureText`) et réservation automatique
@@ -152,9 +155,9 @@ Les changements cassants sont regroupés ici, une seule fois.
       tests visuels.
 
 ### Jalon E — Documentation & expérience développeur (≈ 1 semaine) → `4.0.0-rc.1`
-- [ ] **P8** README réécrit : tableau complet des options (avec défauts),
+- [x] **P8** README réécrit : tableau complet des options (avec défauts),
       format des données, événements, TypeScript, CDN avec version épinglée.
-- [ ] Guide de migration 3.x → 4.0 (changements cassants du jalon C).
+- [x] Guide de migration 3.x → 4.0 (changements cassants du jalon C).
 - [ ] Site de démo (GitHub Pages) généré depuis `examples/` : un exemple par
       fonctionnalité, éditable en direct.
 - [ ] `CONTRIBUTING.md`, modèles d'issues/PR, politique de sécurité.

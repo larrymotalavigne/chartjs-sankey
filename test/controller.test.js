@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, afterEach, vi } from 'vitest';
+import { Chart } from 'chart.js';
 import { createSankey } from './helpers/chart.js';
 
 let current;
@@ -301,6 +302,8 @@ describe('SankeyController flows', () => {
 });
 
 describe('SankeyController colors', () => {
+  const PALETTE = ['#36a2eb', '#ff6384', '#4bc0c0', '#ff9f40', '#9966ff', '#ffcd56', '#c9cbcf'];
+
   it('uses per-flow colors first', () => {
     const s = sankey({ data: [{ from: 'A', to: 'B', flow: 1, color: 'red' }], color: 'blue' });
     expect(s.elements[0].color).toBe('red');
@@ -311,36 +314,106 @@ describe('SankeyController colors', () => {
     expect(s.elements.map(e => e.color)).toEqual(['blue', 'blue']);
   });
 
-  it("derives flow colors from nodeColors with colorMode 'from' and 'to'", () => {
-    const nodeColors = { A: 'red', B: 'green', C: 'blue' };
-    let s = sankey({ data: chain, nodeColors, colorMode: 'from' });
-    expect(s.elements.map(e => e.color)).toEqual(['red', 'green']);
-    current.cleanup();
-    s = sankey({ data: chain, nodeColors, colorMode: 'to' });
-    expect(s.elements.map(e => e.color)).toEqual(['green', 'blue']);
+  it('colors nodes from the default palette', () => {
+    const s = sankey({ data: chain });
+    const colors = s.controller._resolvedNodeColors;
+    expect([...colors.values()]).toEqual(PALETTE.slice(0, 3));
+  });
+
+  it("derives translucent flow colors from the source node with colorMode 'from' (default)", () => {
+    const s = sankey({ data: chain, nodeColors: { A: 'red', B: 'rgb(0, 128, 0)', C: '#0000ff' } });
+    expect(s.elements.map(e => e.color)).toEqual(['rgba(255, 0, 0, 0.5)', 'rgba(0, 128, 0, 0.5)']);
+  });
+
+  it("derives flow colors from the target node with colorMode 'to'", () => {
+    const s = sankey({ data: chain, nodeColors: { A: 'red', B: 'rgb(0, 128, 0)', C: '#0000ff' }, colorMode: 'to' });
+    expect(s.elements.map(e => e.color)).toEqual(['rgba(0, 128, 0, 0.5)', 'rgba(0, 0, 255, 0.5)']);
+  });
+
+  it('derives flow colors the same way whether node colors come from nodeColors or nodeColor', () => {
+    const s = sankey({ data: chain, nodeColor: (id) => ({ A: 'red', B: 'lime', C: 'blue' })[id] });
+    expect(s.elements[0].color).toBe('rgba(255, 0, 0, 0.5)');
+    expect(s.elements[1].color).toBe('rgba(0, 255, 0, 0.5)');
   });
 
   it("builds a source-to-target gradient with colorMode 'gradient'", () => {
-    const s = sankey({ data: chain, nodeColors: { A: 'red', B: 'green', C: 'blue' }, colorMode: 'gradient' });
+    const s = sankey({ data: chain, nodeColors: { A: 'red', B: 'lime', C: 'blue' }, colorMode: 'gradient' });
     const [ab] = s.elements;
-    expect(ab.colorFrom).toBe('red');
-    expect(ab.colorTo).toBe('green');
+    expect(ab.colorFrom).toBe('rgba(255, 0, 0, 0.5)');
+    expect(ab.colorTo).toBe('rgba(0, 255, 0, 0.5)');
     const gradientCall = s.calls('createLinearGradient')[0];
     expect(gradientCall.args).toEqual([ab.x, 0, ab.x2, 0]);
   });
 
-  it('fades the flow color when no node colors are given in gradient mode', () => {
-    const s = sankey({ data: [{ from: 'A', to: 'B', flow: 1, color: 'rgba(10, 20, 30, 0.5)' }], colorMode: 'gradient' });
-    expect(s.elements[0].colorFrom).toBe('rgba(10, 20, 30, 0.5)');
-    expect(s.elements[0].colorTo).toBe('rgba(10, 20, 30, 0.2)');
+  it('lets colorFrom / colorTo override gradient ends', () => {
+    const s = sankey({
+      data: [{ from: 'A', to: 'B', flow: 1, colorFrom: 'black', colorTo: 'white' }],
+      colorMode: 'gradient'
+    });
+    expect(s.elements[0].colorFrom).toBe('black');
+    expect(s.elements[0].colorTo).toBe('white');
+  });
+
+  it('uses an explicit color for both gradient ends', () => {
+    const s = sankey({ data: [{ from: 'A', to: 'B', flow: 1, color: 'orange' }], colorMode: 'gradient' });
+    expect(s.elements[0].colorFrom).toBe('orange');
+    expect(s.elements[0].colorTo).toBe('orange');
   });
 
   it('resolves node fill colors from nodeColors, then nodeColor', () => {
-    const s = sankey({ data: chain, nodeColors: { A: 'red' }, nodeColor: (id) => (id === 'B' ? 'green' : 'gray') });
+    const nodeColor = vi.fn((id) => (id === 'B' ? 'green' : 'gray'));
+    const s = sankey({ data: chain, nodeColors: { A: 'red' }, nodeColor });
     const colors = s.controller._resolvedNodeColors;
     expect(colors.get('A')).toBe('red');
     expect(colors.get('B')).toBe('green');
     expect(colors.get('C')).toBe('gray');
+    // nodeColor receives the node id and the node totals
+    expect(nodeColor).toHaveBeenCalledWith('B', expect.objectContaining({ id: 'B', incoming: 10, outgoing: 10 }));
+  });
+
+  it('applies hoverColor from the flow, then the dataset', () => {
+    const s = sankey({ data: [{ from: 'A', to: 'B', flow: 1, hoverColor: 'red' }, { from: 'B', to: 'C', flow: 1 }], hoverColor: 'blue' });
+    expect(s.elements.map(e => e.hoverColor)).toEqual(['red', 'blue']);
+  });
+});
+
+describe('SankeyController options resolution', () => {
+  const originalNodeWidth = Chart.defaults.datasets.sankey.nodeWidth;
+  afterEach(() => {
+    Chart.defaults.datasets.sankey.nodeWidth = originalNodeWidth;
+  });
+
+  it('honours Chart.defaults.datasets.sankey', () => {
+    Chart.defaults.datasets.sankey.nodeWidth = 7;
+    const s = sankey({ data: chain, labels: { display: false } });
+    expect(positions(s).A.width).toBe(7);
+  });
+
+  it('honours options.datasets.sankey, overridden by the dataset', () => {
+    let s = sankey({ data: chain }, { options: { datasets: { sankey: { nodeWidth: 9 } } } });
+    expect(positions(s).A.width).toBe(9);
+    current.cleanup();
+    s = sankey({ data: chain, nodeWidth: 11 }, { options: { datasets: { sankey: { nodeWidth: 9 } } } });
+    expect(positions(s).A.width).toBe(11);
+  });
+
+  it('deep-merges labels and flowLabels across layers', () => {
+    const s = sankey(
+      { data: chain, labels: { font: { size: 15 } } },
+      { options: { datasets: { sankey: { labels: { color: 'red', font: { family: 'serif' } } } } } }
+    );
+    const fills = s.calls('fillText');
+    expect(fills.length).toBeGreaterThan(0);
+    expect(fills.every(c => c.font === '15px serif' && c.fillStyle === 'red')).toBe(true);
+  });
+
+  it('passes function options through without calling them as scriptable options', () => {
+    const formatter = vi.fn((id) => `<${id}>`);
+    const s = sankey({ data: chain }, { options: { datasets: { sankey: { labels: { formatter } } } } });
+    expect(s.calls('fillText').map(c => c.args[0]).sort()).toEqual(['<A>', '<B>', '<C>']);
+    for (const call of formatter.mock.calls) {
+      expect(typeof call[0]).toBe('string');
+    }
   });
 });
 
@@ -391,6 +464,29 @@ describe('SankeyController drawing', () => {
     expect(s.calls('stroke')).toHaveLength(3);
   });
 
+  it('passes the node id and totals to a nodeBorderColor callback', () => {
+    const nodeBorderColor = vi.fn(() => 'black');
+    sankey({ data: chain, nodeBorderWidth: 1, nodeBorderColor });
+    expect(nodeBorderColor).toHaveBeenCalledWith('A', expect.objectContaining({ id: 'A', outgoing: 10 }));
+  });
+
+  it("draws labels below the nodes with position 'bottom'", () => {
+    const s = sankey({ data: chain, labels: { position: 'bottom' } });
+    const p = positions(s);
+    const byText = Object.fromEntries(s.calls('fillText').map(c => [c.args[0], c]));
+    for (const id of ['A', 'B', 'C']) {
+      expect(byText[id].args[2]).toBe(p[id].y + p[id].height + 5);
+      expect(byText[id].textAlign).toBe('center');
+    }
+  });
+
+  it("reserves room below the last level for position 'bottom' in vertical mode", () => {
+    const s = sankey({ data: chain, orientation: 'vertical', labels: { position: 'bottom' } });
+    const p = positions(s);
+    expect(p.A.y).toBe(0);
+    expect(p.C.y + p.C.height).toBe(300 - (12 + 5));
+  });
+
   it('draws rounded nodes with nodeBorderRadius', () => {
     let s = sankey({ data: chain });
     expect(s.calls('quadraticCurveTo')).toHaveLength(0);
@@ -401,54 +497,78 @@ describe('SankeyController drawing', () => {
 });
 
 describe('SankeyController events', () => {
-  function click(canvas, x, y) {
-    canvas.dispatchEvent(new MouseEvent('click', { clientX: x, clientY: y, bubbles: true }));
-  }
-
-  it('calls onFlowClick with the clicked data point', () => {
+  it('calls onFlowClick with the clicked data point', async () => {
     const onFlowClick = vi.fn();
     const s = sankey({ data: chain, onFlowClick });
     const [ab] = s.elements;
     const { x, y } = ab.getCenterPoint();
-    click(s.canvas, x, y);
+    await s.dispatch('click', x, y);
     expect(onFlowClick).toHaveBeenCalledTimes(1);
     expect(onFlowClick.mock.calls[0][0]).toBe(chain[0]);
     expect(onFlowClick.mock.calls[0][1]).toBeInstanceOf(MouseEvent);
   });
 
-  it('calls onNodeClick with the node id and totals', () => {
+  it('calls onNodeClick with the node id and totals', async () => {
     const onNodeClick = vi.fn();
     const s = sankey({ data: fanOut, onNodeClick });
     const a = positions(s).A;
-    click(s.canvas, a.x + a.width / 2, a.y + a.height / 2);
+    await s.dispatch('click', a.x + a.width / 2, a.y + a.height / 2);
     expect(onNodeClick).toHaveBeenCalledTimes(1);
     const [id, node] = onNodeClick.mock.calls[0];
     expect(id).toBe('A');
     expect(node).toMatchObject({ id: 'A', outgoing: 40, incoming: 0, value: 40 });
   });
 
-  it('ignores clicks on empty space', () => {
+  it('accepts callbacks from options.datasets.sankey', async () => {
+    const onNodeClick = vi.fn();
+    const s = sankey({ data: fanOut }, { options: { datasets: { sankey: { onNodeClick } } } });
+    const a = positions(s).A;
+    await s.dispatch('click', a.x + a.width / 2, a.y + a.height / 2);
+    expect(onNodeClick).toHaveBeenCalledWith('A', expect.anything(), expect.anything());
+  });
+
+  it('ignores clicks on empty space', async () => {
     const onFlowClick = vi.fn();
     const onNodeClick = vi.fn();
     const s = sankey({ data: fanOut, onFlowClick, onNodeClick });
     const p = positions(s);
     // Inside the padding gap between B and C, past the end of the flows
-    click(s.canvas, p.B.x + 1, p.B.y + p.B.height + 5);
+    await s.dispatch('click', p.B.x + 1, p.B.y + p.B.height + 5);
     expect(onFlowClick).not.toHaveBeenCalled();
     expect(onNodeClick).not.toHaveBeenCalled();
   });
 
-  it('removes its listeners when the chart is destroyed', () => {
+  it('respects options.events', async () => {
     const onNodeClick = vi.fn();
-    const s = sankey({ data: fanOut, onNodeClick });
+    const s = sankey({ data: fanOut, onNodeClick }, { options: { events: ['mousemove'] } });
     const a = positions(s).A;
-    const canvas = s.canvas;
-    s.chart.destroy();
-    click(canvas, a.x + 1, a.y + 1);
+    await s.dispatch('click', a.x + 1, a.y + 1);
     expect(onNodeClick).not.toHaveBeenCalled();
   });
 
-  it('dims nodes that are not connected to the hovered node', () => {
+  it('keeps working after the first dataset is removed', async () => {
+    const onNodeClick = vi.fn();
+    const s = sankey({ data: chain });
+    s.chart.data.datasets.push({ type: 'sankey', data: fanOut, onNodeClick, labels: { display: false } });
+    s.chart.update();
+    s.chart.data.datasets.shift();
+    s.chart.update();
+    const a = Object.fromEntries(s.chart.getDatasetMeta(0).controller._nodePositions).A;
+    await s.dispatch('click', a.x + 1, a.y + 1);
+    expect(onNodeClick).toHaveBeenCalledTimes(1);
+  });
+
+  it('stops handling events once the chart is destroyed', async () => {
+    const onNodeClick = vi.fn();
+    const s = sankey({ data: fanOut, onNodeClick });
+    const a = positions(s).A;
+    s.chart.destroy();
+    await s.dispatch('click', a.x + 1, a.y + 1);
+    expect(onNodeClick).not.toHaveBeenCalled();
+    expect(s.chart.$sankey).toBeUndefined();
+  });
+
+  it('dims nodes that are not connected to the hovered node', async () => {
     const nodeColors = { A: 'red', B: 'green', C: 'blue', D: 'black' };
     const s = sankey({
       data: [
@@ -460,7 +580,7 @@ describe('SankeyController events', () => {
     });
     const a = positions(s).A;
     s.resetCalls();
-    s.canvas.dispatchEvent(new MouseEvent('mousemove', { clientX: a.x + 1, clientY: a.y + 1 }));
+    await s.dispatch('mousemove', a.x + 1, a.y + 1);
     const alphaByColor = Object.fromEntries(
       s.calls('fill').filter(c => Object.values(nodeColors).includes(c.fillStyle)).map(c => [c.fillStyle, c.globalAlpha])
     );
@@ -470,7 +590,7 @@ describe('SankeyController events', () => {
     expect(alphaByColor.black).toBe(0.3);
   });
 
-  it('dims unconnected flows while a node is hovered', () => {
+  it('dims unconnected flows while a node is hovered, and restores them on mouseout', async () => {
     const s = sankey({
       data: [
         { from: 'A', to: 'C', flow: 10 },
@@ -479,14 +599,16 @@ describe('SankeyController events', () => {
     });
     const a = positions(s).A;
     s.resetCalls();
-    s.canvas.dispatchEvent(new MouseEvent('mousemove', { clientX: a.x + 1, clientY: a.y + 1 }));
-    expect(s.chart._sankeyMouse.hoveredNodeId).toBe('A');
+    await s.dispatch('mousemove', a.x + 1, a.y + 1);
+    expect(s.chart.$sankey.hovered).toEqual({ datasetIndex: 0, nodeId: 'A' });
     const fills = s.calls('fill');
     // Two flows are drawn first: A->C stays opaque, B->D is dimmed
     expect(fills[0].globalAlpha).not.toBe(0.15);
     expect(fills[1].globalAlpha).toBe(0.15);
 
-    s.canvas.dispatchEvent(new MouseEvent('mouseleave'));
-    expect(s.chart._sankeyMouse).toBeNull();
+    s.resetCalls();
+    await s.dispatch('mouseout', 0, 0);
+    expect(s.chart.$sankey.hovered).toBeNull();
+    expect(s.calls('fill').every(c => c.globalAlpha === 1)).toBe(true);
   });
 });

@@ -4,6 +4,7 @@
 import { Chart } from 'chart.js';
 import SankeyDefault, {
   SankeyController,
+  SankeyPlugin,
   FlowElement,
   Flow,
   isValidFlow,
@@ -15,7 +16,7 @@ import SankeyDefault, {
   type SankeyNode
 } from '@larrym/chartjs-plugin-sankey';
 
-Chart.register(SankeyController, FlowElement);
+Chart.register(SankeyController, FlowElement, SankeyPlugin);
 Chart.register(SankeyDefault, Flow);
 
 const data: SankeyDataPoint[] = [
@@ -35,8 +36,8 @@ const chart = new Chart(canvas, {
         orientation: 'vertical',
         colorMode: 'gradient',
         nodeColors: { A: 'red' },
-        nodeColor: (id: string) => (id === 'A' ? 'red' : 'blue'),
-        nodeBorderColor: 'black',
+        nodeColor: (id: string, node: SankeyNode) => (node.value > 5 ? 'red' : undefined),
+        nodeBorderColor: (id: string, node: SankeyNode) => (id === 'A' && node.incoming === 0 ? 'black' : 'gray'),
         nodeBorderWidth: 1,
         nodeBorderRadius: 4,
         nodeWidth: 12,
@@ -45,7 +46,7 @@ const chart = new Chart(canvas, {
         nodes: { C: { column: 3 } },
         labels: {
           display: true,
-          position: 'right',
+          position: 'bottom',
           font: { size: 14, family: 'serif' },
           formatter: (id: string, node: SankeyNode) => `${id} (${node.value})`
         },
@@ -59,10 +60,16 @@ const chart = new Chart(canvas, {
     ]
   },
   options: {
-    plugins: { legend: { display: false } }
+    plugins: { legend: { display: false } },
+    datasets: {
+      sankey: { nodeWidth: 10, labels: { color: 'gray' } }
+    }
   }
 });
 chart.update();
+
+// Global defaults for every sankey dataset
+Chart.defaults.datasets.sankey.nodePadding = 4;
 
 new Chart(canvas, {
   type: 'sankey',

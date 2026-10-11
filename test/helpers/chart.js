@@ -75,7 +75,6 @@ export function createSankey(dataset, { width = 400, height = 300, options = {} 
       responsive: false,
       animation: false,
       devicePixelRatio: 1,
-      events: [],
       ...options
     }
   });
@@ -86,6 +85,14 @@ export function createSankey(dataset, { width = 400, height = 300, options = {} 
     controller: chart.getDatasetMeta(0).controller,
     elements: chart.getDatasetMeta(0).data,
     calls: (name) => ctx.__calls.filter(c => !name || c.name === name),
+    /**
+     * Dispatch a native event on the canvas and wait for Chart.js to process
+     * it (Chart.js throttles events to animation frames).
+     */
+    dispatch: async (type, x, y, init = {}) => {
+      canvas.dispatchEvent(new MouseEvent(type, { clientX: x, clientY: y, bubbles: true, ...init }));
+      await new Promise(resolve => setTimeout(resolve, 50));
+    },
     resetCalls: () => { ctx.__calls.length = 0; },
     cleanup: () => {
       chart.destroy();

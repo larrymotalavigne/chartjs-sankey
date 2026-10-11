@@ -7,54 +7,72 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [4.0.0-beta.1] - Unreleased
+
+First release with a frozen, documented API. See [MIGRATION.md](MIGRATION.md)
+for upgrade notes.
+
+### Breaking
+- New default colors: nodes use a built-in palette (previously all black) and
+  flows take their source node's color at 50% opacity (previously one palette
+  color per flow).
+- `colorMode` derives flow colors from the resolved node color whatever its
+  source (`nodeColors`, `nodeColor`, palette); it used to require `nodeColors`.
+  Derived colors are translucent. An explicit `color` in gradient mode is used
+  for both ends (it used to fade to 20% opacity).
+- Options set in `Chart.defaults.datasets.sankey` and `options.datasets.sankey`
+  are now applied (they were ignored).
+- Events go through Chart.js (`options.events` is honoured); nodes take click
+  priority over flows.
+- Self-loops (`from === to`) are ignored: `isValidFlow()` returns `false` for them.
+- Package `exports` map: deep imports of files inside the package no longer
+  resolve from Node or bundlers (CDN URLs are unaffected).
+- Space for the labels of the first and last levels is reserved in the layout.
+
+### Added
+- `SankeyPlugin`: Chart.js plugin handling node hover and click callbacks;
+  registered automatically on import.
+- Touch support and correct coordinates on padded/bordered canvases for clicks
+  and node hover.
+- `labels.position: 'bottom'`.
+- `nodeColor` and `nodeBorderColor` callbacks receive the node as second
+  argument.
+- CommonJS build (`dist/chartjs-plugin-sankey.cjs`) and `unpkg` / `jsdelivr`
+  fields.
+
 ### Changed
-- Node labels no longer overflow the canvas: the space needed by the labels of
-  the first and last levels is measured and reserved automatically (capped at
-  a third of the chart on each side). A manual `layout.padding` added to work
-  around clipped labels can be removed.
 - At each node, flow bands are stacked in the order of the nodes at their other
   end instead of data order, removing avoidable crossings where bands attach.
-- Self-loops (`from === to`) are ignored: `isValidFlow()` now returns `false`
-  for them. They used to be drawn as a broken band across the node.
 - Faster layout on large graphs (`assignNodeLevels` builds adjacency lists once;
-  about 10x faster on 500 nodes / 1,800 flows) and on node hover (connected
-  nodes computed once per frame instead of once per node).
+  about 10x faster on 500 nodes / 1,800 flows) and on node hover.
+- Type declarations ship in `dist/` (`.d.ts` and `.d.cts`); `SankeyController`
+  is typed as a `DatasetController`.
+- Removed the ineffective `maintainAspectRatio` / `aspectRatio` entries from the
+  dataset defaults.
 
 ### Fixed
+- `require('@larrym/chartjs-plugin-sankey')` returned an empty object (the
+  package declares `"type": "module"` but `main` pointed at the UMD build).
+- Charts failed with `"linear" is not a registered scale` with a tree-shaken
+  Chart.js (including the README's ES module example). `LinearScale` is now
+  registered with the controller.
+- Click and hover listeners were never removed: after `chart.destroy()` they
+  leaked and every click threw a `TypeError`. Clicks also stopped working when
+  the first sankey dataset of a chart was removed.
+- Node labels of the first and last levels were drawn outside the canvas.
 - Hovering a node crashed when the dataset contained a `null` data point.
-- Charts failed with `"linear" is not a registered scale` when Chart.js was
-  imported without `chart.js/auto` (tree-shaken setups, including the README's
-  ES module example). The plugin now registers `LinearScale` along with its
-  controller and element.
-- Click and hover listeners were never removed: the cleanup lived in a
-  `destroy()` method that Chart.js never calls (it calls `_destroy()`). After
-  `chart.destroy()` the listeners leaked and every click on the canvas threw a
-  `TypeError`.
-- `require('@larrym/chartjs-plugin-sankey')` returned an empty object: the
-  package declares `"type": "module"` but `main` pointed at the UMD build,
-  which Node then loaded as ESM. A dedicated CommonJS build
-  (`dist/chartjs-plugin-sankey.cjs`) is now published.
-- TypeScript: the `sankey` entry of `ChartTypeRegistry` was incomplete
-  (missing `parsedDataType` / `metaExtensions`, invalid `scales`), which broke
-  Chart.js's own types and rejected standard dataset options such as `label`.
-  `SankeyControllerDatasetOptions` now extends `ControllerDatasetOptions`.
-
-### Changed
-- Added a package `exports` map (`import` → ESM, `require` → CJS, each with its
-  own declarations). Deep imports of files inside the package are no longer
-  resolvable from Node or bundlers; CDN URLs are unaffected.
-- Type declarations are now shipped in `dist/` (`.d.ts` and `.d.cts`).
-- Added `unpkg` / `jsdelivr` fields so bare CDN URLs serve the minified UMD build.
+- TypeScript: the `sankey` entry of `ChartTypeRegistry` was incomplete, which
+  broke Chart.js's own types and rejected options such as `label`.
+- Examples page: charts with `maintainAspectRatio: false` grew without bound
+  because their container had no height.
 
 ### Internal
-- Integration tests for `SankeyController` running a real Chart.js instance
-  (jsdom + recording canvas context): layout in both orientations, flow
-  geometry, colors, labels, click/hover events and teardown. Coverage
-  thresholds are enforced in CI (`npm run test:coverage`).
+- Integration tests for `SankeyController` on a real Chart.js instance (jsdom +
+  recording canvas context), coverage thresholds in CI.
 - ESLint, type-declaration tests (`npm run test:types`) and a package check
-  (`npm run test:package`: smoke test of CJS/ESM/UMD entry points, `publint`,
-  `arethetypeswrong`) run in CI.
-- CI matrix moved to Node.js 22, 24 and 26 (18 and 20 are end-of-life).
+  (`npm run test:package`: CJS/ESM/UMD smoke test, `publint`,
+  `arethetypeswrong`) in CI and before publishing.
+- CI matrix moved to Node.js 22, 24 and 26.
 
 ## [3.0.0] - 2026-02-26
 
@@ -96,6 +114,7 @@ Initial implementation, under the package name `chartjs-plugin-sankey`
 (never published under the `@larrym` scope).
 
 [Unreleased]: https://github.com/larrymotalavigne/chartjs-sankey/compare/b0f05d6...HEAD
+[4.0.0-beta.1]: https://github.com/larrymotalavigne/chartjs-sankey/compare/b0f05d6...HEAD
 [3.0.0]: https://github.com/larrymotalavigne/chartjs-sankey/compare/d740294...eecc3dd
 [2.0.1]: https://github.com/larrymotalavigne/chartjs-sankey/compare/c01997e...d740294
 [2.0.0]: https://github.com/larrymotalavigne/chartjs-sankey/commits/c01997e

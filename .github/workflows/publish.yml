@@ -43,6 +43,12 @@ jobs:
         run: npm run test:package
 
       - name: Publish to npm
-        run: npm publish --provenance --access public
+        # Pre-releases (e.g. 4.0.0-beta.1) go to the "next" dist-tag so they
+        # never become "latest".
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          if [[ "$VERSION" == *-* ]]; then TAG=next; else TAG=latest; fi
+          echo "Publishing $VERSION with dist-tag $TAG"
+          npm publish --provenance --access public --tag "$TAG"
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

@@ -18,6 +18,7 @@ const vm = require('node:vm');
 const PKG = '@larrym/chartjs-plugin-sankey';
 const EXPORTS = [
   'SankeyController',
+  'SankeyPlugin',
   'FlowElement',
   'Flow',
   'isValidFlow',
@@ -36,6 +37,8 @@ function checkApi(label, mod, registry) {
   assert.equal(mod.Flow, mod.FlowElement, `${label}: Flow is not an alias of FlowElement`);
   assert.ok(registry.controllers.get('sankey'), `${label}: 'sankey' controller not registered`);
   assert.ok(registry.elements.get('flow'), `${label}: 'flow' element not registered`);
+  assert.ok(registry.plugins.get('sankeyInteraction'), `${label}: interaction plugin not registered`);
+  assert.ok(registry.scales.get('linear'), `${label}: linear scale not registered`);
   console.log(`ok - ${label}`);
 }
 

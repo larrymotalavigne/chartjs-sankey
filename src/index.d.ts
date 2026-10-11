@@ -1,8 +1,9 @@
-import { Element } from 'chart.js';
+import { DatasetController, Element } from 'chart.js';
 import type {
   CartesianScaleTypeRegistry,
   ControllerDatasetOptions,
-  CoreChartOptions
+  CoreChartOptions,
+  Plugin
 } from 'chart.js';
 
 export interface SankeyDataPoint {
@@ -32,8 +33,12 @@ export interface SankeyLabelOptions {
   };
   color?: string;
   padding?: number;
-  /** 'auto' places labels contextually based on column level and orientation */
-  position?: 'auto' | 'left' | 'right' | 'top';
+  /**
+   * Side of the node the label is drawn on. 'auto' puts the labels of the
+   * first and last levels outside the diagram and the others above
+   * (horizontal) or to the left (vertical) of their node.
+   */
+  position?: 'auto' | 'left' | 'right' | 'top' | 'bottom';
   /** Custom label formatter. Receives the node ID and node data. */
   formatter?: ((nodeId: string, node: SankeyNode) => string) | null;
 }
@@ -49,10 +54,21 @@ export interface SankeyFlowLabelOptions {
   formatter?: ((value: number, flow: SankeyDataPoint) => string) | null;
 }
 
+/**
+ * Options of a sankey dataset. They can also be set for every sankey dataset
+ * of a chart (`options.datasets.sankey`) or globally
+ * (`Chart.defaults.datasets.sankey`); the dataset wins over the chart, which
+ * wins over the global defaults. `labels` and `flowLabels` are deep-merged.
+ */
 export interface SankeyControllerDatasetOptions extends ControllerDatasetOptions {
   data: SankeyDataPoint[];
-  color?: string;
-  /** 'from' uses source node color; 'to' uses destination node color; 'gradient' applies a horizontal gradient */
+  /** Color of every flow of the dataset (overridden by per-flow `color`). Default: derived from node colors. */
+  color?: string | null;
+  /**
+   * How flow colors are derived from node colors when no explicit color is set:
+   * 'from' uses the source node, 'to' the target node, 'gradient' blends both.
+   * Derived colors are drawn at 50% opacity.
+   */
   colorMode?: 'from' | 'to' | 'gradient';
   /** Color applied to hovered flows (overridden by per-flow hoverColor) */
   hoverColor?: string | null;
@@ -60,22 +76,22 @@ export interface SankeyControllerDatasetOptions extends ControllerDatasetOptions
   orientation?: 'horizontal' | 'vertical';
   nodeWidth?: number;
   nodePadding?: number;
-  /** String or callback (nodeId) => string */
-  nodeColor?: string | ((nodeId: string) => string);
-  /** Map of node IDs to colors, used by colorMode 'from'/'to'/'gradient' to derive flow colors */
+  /** Node color, or callback `(nodeId, node) => color`. Default: built-in palette. */
+  nodeColor?: string | ((nodeId: string, node: SankeyNode) => string | null | undefined) | null;
+  /** Map of node IDs to colors; takes precedence over `nodeColor`. */
   nodeColors?: Record<string, string> | null;
-  /** String or callback (nodeId) => string */
-  nodeBorderColor?: string | ((nodeId: string) => string);
+  /** Border color, or callback `(nodeId, node) => color` */
+  nodeBorderColor?: string | ((nodeId: string, node: SankeyNode) => string);
   nodeBorderWidth?: number;
   nodeBorderRadius?: number;
   /** Manual node positioning overrides */
-  nodes?: Record<string, SankeyNodeConfig>;
+  nodes?: Record<string, SankeyNodeConfig> | null;
   labels?: SankeyLabelOptions;
   flowLabels?: SankeyFlowLabelOptions;
   /** Callback fired when a flow band is clicked */
-  onFlowClick?: (flow: SankeyDataPoint, event: MouseEvent) => void;
+  onFlowClick?: ((flow: SankeyDataPoint, event: MouseEvent) => void) | null;
   /** Callback fired when a node is clicked */
-  onNodeClick?: (nodeId: string, node: SankeyNode, event: MouseEvent) => void;
+  onNodeClick?: ((nodeId: string, node: SankeyNode, event: MouseEvent) => void) | null;
 }
 
 declare module 'chart.js' {
@@ -108,11 +124,18 @@ export function assignNodeLevels(
 export function groupByLevel(levels: Map<string, number>): Map<number, string[]>;
 export function reorderNodes(nodesByLevel: Map<number, string[]>, data: SankeyDataPoint[]): void;
 
-export class SankeyController {
+export class SankeyController extends DatasetController<'sankey', FlowElement> {
   static id: 'sankey';
   static defaults: any;
   static overrides: any;
 }
+
+/**
+ * Chart.js plugin handling node hover and the `onFlowClick` / `onNodeClick`
+ * callbacks. Registered automatically on import, together with
+ * SankeyController, FlowElement and LinearScale.
+ */
+export const SankeyPlugin: Plugin<'sankey'>;
 
 export class FlowElement extends Element {
   static id: 'flow';
