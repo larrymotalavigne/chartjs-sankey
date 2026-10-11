@@ -89,16 +89,20 @@ Corrige l'installabilité sans casser l'API.
 ### Jalon B — Filet de sécurité : tests (≈ 1–2 semaines) → interne
 À faire **avant** les refontes du jalon C pour détecter les régressions.
 
-- [ ] **P7** Tests d'intégration du contrôleur avec une vraie instance
+- [x] **P7** Tests d'intégration du contrôleur avec une vraie instance
       Chart.js : Vitest + `jsdom` + `canvas` (node-canvas) **ou** Vitest
       browser mode avec Playwright (Chromium déjà dispo en CI). Couvrir :
       positions des nœuds (2 orientations), épaisseurs/offsets des flux,
       données vides/invalides, `update()` après changement de données,
       `destroy()`, multi-datasets.
+      *Fait (jsdom + contexte canvas simulé, 35 tests). Deux bugs trouvés et
+      corrigés au passage : échelle `linear` non enregistrée (plantage avec un
+      Chart.js « tree-shaké ») et écouteurs jamais retirés au `destroy()`.
+      Le cas multi-datasets reste à couvrir avec la refonte des événements (P4).*
 - [ ] Tests de régression visuelle (snapshots PNG) sur 5–6 diagrammes de
       référence (énergie, budget, parcours client, vertical, gradient, cycle).
 - [x] **P9** Tests de types (`tsd` ou `tsc --noEmit` sur des fixtures).
-- [ ] Seuil de couverture en CI (ex. 85 % lignes sur `src/`).
+- [x] Seuil de couverture en CI (ex. 85 % lignes sur `src/`).
 
 ### Jalon C — Stabilisation de l'API (≈ 2–3 semaines) → `4.0.0-beta.1`
 Les changements cassants sont regroupés ici, une seule fois.

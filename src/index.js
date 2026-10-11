@@ -1,4 +1,4 @@
-import { Chart, DatasetController, Element } from 'chart.js';
+import { Chart, DatasetController, Element, LinearScale } from 'chart.js';
 
 const defaultColors = [
   'rgba(54, 162, 235, 0.5)',
@@ -418,7 +418,9 @@ export class SankeyController extends DatasetController {
     this._bindMouseTracker();
   }
 
-  destroy() {
+  // Chart.js calls `_destroy()` (not `destroy()`) on dataset controllers when
+  // the chart is destroyed or the dataset is removed.
+  _destroy() {
     if (this._clickHandler) {
       this.chart.canvas.removeEventListener('click', this._clickHandler);
       this.chart._sankeyClickBound = false;
@@ -428,7 +430,7 @@ export class SankeyController extends DatasetController {
       this.chart.canvas.removeEventListener('mouseleave', this._mouseLeaveHandler);
       this.chart._sankeyMouseBound = false;
     }
-    super.destroy();
+    super._destroy();
   }
 
   _bindClickHandler() {
@@ -1019,7 +1021,10 @@ export class SankeyController extends DatasetController {
   }
 }
 
-Chart.register(SankeyController, FlowElement);
+// The controller lays out nodes in pixel space but Chart.js still builds the
+// (hidden) linear x/y scales declared in its defaults, so register the scale
+// too: tree-shaken Chart.js setups would otherwise fail on first render.
+Chart.register(SankeyController, FlowElement, LinearScale);
 
 export { FlowElement as Flow };
 export default SankeyController;

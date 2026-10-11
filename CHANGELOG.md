@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- Charts failed with `"linear" is not a registered scale` when Chart.js was
+  imported without `chart.js/auto` (tree-shaken setups, including the README's
+  ES module example). The plugin now registers `LinearScale` along with its
+  controller and element.
+- Click and hover listeners were never removed: the cleanup lived in a
+  `destroy()` method that Chart.js never calls (it calls `_destroy()`). After
+  `chart.destroy()` the listeners leaked and every click on the canvas threw a
+  `TypeError`.
 - `require('@larrym/chartjs-plugin-sankey')` returned an empty object: the
   package declares `"type": "module"` but `main` pointed at the UMD build,
   which Node then loaded as ESM. A dedicated CommonJS build
@@ -25,6 +33,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added `unpkg` / `jsdelivr` fields so bare CDN URLs serve the minified UMD build.
 
 ### Internal
+- Integration tests for `SankeyController` running a real Chart.js instance
+  (jsdom + recording canvas context): layout in both orientations, flow
+  geometry, colors, labels, click/hover events and teardown. Coverage
+  thresholds are enforced in CI (`npm run test:coverage`).
 - ESLint, type-declaration tests (`npm run test:types`) and a package check
   (`npm run test:package`: smoke test of CJS/ESM/UMD entry points, `publint`,
   `arethetypeswrong`) run in CI.

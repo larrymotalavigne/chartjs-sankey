@@ -69,9 +69,14 @@ Internal helpers: `adjustAlpha`, `drawRoundedRect`, `resolveNodeColor`.
 
 ## Testing
 
-Tests use Vitest and cover utility functions (including column pin overrides), FlowElement hit testing (both orientations), and element geometry. `test/types/usage.ts` is compile-only (run with `npm run test:types`). `scripts/smoke-test.cjs` loads the built package via `require`, `import` and the UMD builds.
+- `test/index.test.js` — utility functions (including column pin overrides), FlowElement hit testing (both orientations), element geometry.
+- `test/controller.test.js` — `SankeyController` integration tests on a real Chart.js instance in jsdom. `test/helpers/chart.js` installs a recording mock 2D context (jsdom has no canvas) and a `createSankey(dataset)` helper exposing node positions, elements and recorded draw calls. Only `SankeyController`/`FlowElement` are registered, which mirrors a tree-shaken Chart.js setup.
+- `test/types/usage.ts` — compile-only checks of the shipped declarations (`npm run test:types`).
+- `scripts/smoke-test.cjs` — loads the built package via `require`, `import` and the UMD builds.
 
-**TODO:** `SankeyController` integration tests are NOT implemented — they'd require a canvas/Chart.js instance (jsdom + canvas mock or a real browser runner). Controller layout/draw changes are currently untested; verify manually.
+Coverage thresholds live in `vitest.config.js` (`npm run test:coverage`). Pixel-level rendering is not tested yet (no visual regression suite).
+
+Chart.js calls `_destroy()` (not `destroy()`) on dataset controllers — put teardown there.
 
 ## CI/CD
 
