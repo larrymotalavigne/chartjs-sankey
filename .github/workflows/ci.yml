@@ -12,7 +12,7 @@ jobs:
 
     strategy:
       matrix:
-        node-version: [18.x, 20.x, 22.x, 24.x]
+        node-version: [22.x, 24.x, 26.x]
 
     steps:
     - uses: actions/checkout@v4
@@ -21,18 +21,28 @@ jobs:
       uses: actions/setup-node@v4
       with:
         node-version: ${{ matrix.node-version }}
+        cache: npm
 
     - name: Install dependencies
       run: npm ci
 
+    - name: Lint
+      run: npm run lint
+
     - name: Build
       run: npm run build
 
-    - name: Run tests
-      run: npm test
+    - name: Run tests (with coverage thresholds)
+      run: npm run test:coverage
+
+    - name: Check type declarations
+      run: npm run test:types
+
+    - name: Check published package
+      run: npm run test:package
 
     - name: Upload build artifacts
-      if: matrix.node-version == '20.x'
+      if: matrix.node-version == '22.x'
       uses: actions/upload-artifact@v4
       with:
         name: dist

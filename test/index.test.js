@@ -55,6 +55,10 @@ describe('isValidFlow', () => {
     expect(isValidFlow({ from: 'A', to: 'B', flow: Infinity })).toBe(false);
   });
 
+  it('rejects self-loops', () => {
+    expect(isValidFlow({ from: 'A', to: 'A', flow: 10 })).toBe(false);
+  });
+
   it('rejects non-string from', () => {
     expect(isValidFlow({ from: 123, to: 'B', flow: 10 })).toBe(false);
   });

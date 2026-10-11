@@ -1,24 +1,21 @@
-import { Chart, DatasetController, Element } from 'chart.js';
+import { Chart, DatasetController, Element, LinearScale, defaults as chartDefaults } from 'chart.js';
+import { color as parseColor } from 'chart.js/helpers';
 
-const defaultColors = [
-  'rgba(54, 162, 235, 0.5)',
-  'rgba(255, 99, 132, 0.5)',
-  'rgba(255, 206, 86, 0.5)',
-  'rgba(75, 192, 192, 0.5)',
-  'rgba(153, 102, 255, 0.5)',
-  'rgba(255, 159, 64, 0.5)'
-];
+/** Default node colors (same hues as Chart.js's built-in palette). */
+const NODE_PALETTE = ['#36a2eb', '#ff6384', '#4bc0c0', '#ff9f40', '#9966ff', '#ffcd56', '#c9cbcf'];
+
+/** Opacity applied to flow colors derived from node colors. */
+const FLOW_ALPHA = 0.5;
 
 /**
- * Attempt to produce an rgba color string with the given alpha.
- * Supports rgb(...), rgba(...), and 6-digit hex inputs.
+ * Return `value` with its alpha channel set to `alpha`. Accepts any CSS color
+ * Chart.js understands (hex, rgb[a], hsl[a], named colors); anything else
+ * (gradients, patterns, unparsable strings) is returned unchanged.
  */
-function adjustAlpha(color, alpha) {
-  const rgb = color.match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/);
-  if (rgb) return `rgba(${rgb[1]}, ${rgb[2]}, ${rgb[3]}, ${alpha})`;
-  const hex = color.match(/^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})/i);
-  if (hex) return `rgba(${parseInt(hex[1], 16)}, ${parseInt(hex[2], 16)}, ${parseInt(hex[3], 16)}, ${alpha})`;
-  return color;
+function withAlpha(value, alpha) {
+  if (typeof value !== 'string') return value;
+  const c = parseColor(value);
+  return c && c.valid ? c.alpha(alpha).rgbString() : value;
 }
 
 /**
@@ -43,11 +40,14 @@ function drawRoundedRect(ctx, x, y, w, h, r) {
 
 /**
  * Validates that a data point has the required fields for a Sankey flow.
+ * Self-loops (from === to) are rejected: a Sankey band cannot connect a node
+ * to itself.
  */
 export function isValidFlow(dp) {
   return dp != null
     && typeof dp.from === 'string' && dp.from.length > 0
     && typeof dp.to === 'string' && dp.to.length > 0
+    && dp.from !== dp.to
     && typeof dp.flow === 'number' && dp.flow > 0 && isFinite(dp.flow);
 }
 
@@ -83,6 +83,16 @@ export function assignNodeLevels(data, nodes, nodeConfig) {
   const levels = new Map();
   const visited = new Set();
 
+  // Adjacency lists (in data order) so each node's edges are visited once
+  const targets = new Map();
+  const sources = new Map();
+  for (const flow of data) {
+    if (!targets.has(flow.from)) targets.set(flow.from, []);
+    targets.get(flow.from).push(flow.to);
+    if (!sources.has(flow.to)) sources.set(flow.to, []);
+    sources.get(flow.to).push(flow.from);
+  }
+
   // Pre-pin nodes and seed BFS with their children
   const queue = [];
   if (nodeConfig) {
@@ -90,20 +100,17 @@ export function assignNodeLevels(data, nodes, nodeConfig) {
       if (cfg && cfg.column != null && nodes.has(id)) {
         levels.set(id, cfg.column);
         visited.add(id);
-        for (const flow of data) {
-          if (flow.from === id) {
-            queue.push({ id: flow.to, level: cfg.column + 1 });
-          }
+        for (const to of targets.get(id) || []) {
+          queue.push({ id: to, level: cfg.column + 1 });
         }
       }
     }
   }
 
   // Find root nodes (no incoming edges, not already pinned)
-  const hasIncoming = new Set(data.map(f => f.to));
   const roots = [];
   for (const id of nodes.keys()) {
-    if (!visited.has(id) && !hasIncoming.has(id)) roots.push(id);
+    if (!visited.has(id) && !sources.has(id)) roots.push(id);
   }
 
   // If no roots and no queued items, pick the first unvisited node
@@ -129,9 +136,9 @@ export function assignNodeLevels(data, nodes, nodeConfig) {
     visited.add(id);
     levels.set(id, level);
 
-    for (const flow of data) {
-      if (flow.from === id && !visited.has(flow.to)) {
-        queue.push({ id: flow.to, level: level + 1 });
+    for (const to of targets.get(id) || []) {
+      if (!visited.has(to)) {
+        queue.push({ id: to, level: level + 1 });
       }
     }
   }
@@ -140,9 +147,9 @@ export function assignNodeLevels(data, nodes, nodeConfig) {
   for (const id of nodes.keys()) {
     if (!levels.has(id)) {
       let maxIncomingLevel = -1;
-      for (const flow of data) {
-        if (flow.to === id && levels.has(flow.from)) {
-          maxIncomingLevel = Math.max(maxIncomingLevel, levels.get(flow.from));
+      for (const from of sources.get(id) || []) {
+        if (levels.has(from)) {
+          maxIncomingLevel = Math.max(maxIncomingLevel, levels.get(from));
         }
       }
       levels.set(id, maxIncomingLevel >= 0 ? maxIncomingLevel + 1 : 0);
@@ -213,19 +220,6 @@ export function reorderNodes(nodesByLevel, data) {
 }
 
 /**
- * Resolve the display color for a node.
- */
-function resolveNodeColor(nodeId, dataset, nodeIndex) {
-  if (dataset.nodeColors && dataset.nodeColors[nodeId]) {
-    return dataset.nodeColors[nodeId];
-  }
-  const nc = dataset.nodeColor;
-  if (typeof nc === 'function') return nc(nodeId);
-  if (typeof nc === 'string') return nc;
-  return 'rgba(0, 0, 0, 0.8)';
-}
-
-/**
  * Flow element for Sankey diagrams.
  * Renders as a bezier band connecting two nodes, with tapering support.
  */
@@ -256,17 +250,17 @@ export class FlowElement extends Element {
     } else if (this.colorMode === 'gradient' && x !== x2) {
       if (isVertical) {
         const gradient = ctx.createLinearGradient(0, y, 0, y2);
-        gradient.addColorStop(0, this.colorFrom || color || defaultColors[0]);
-        gradient.addColorStop(1, this.colorTo || color || defaultColors[0]);
+        gradient.addColorStop(0, this.colorFrom || color || NODE_PALETTE[0]);
+        gradient.addColorStop(1, this.colorTo || color || NODE_PALETTE[0]);
         ctx.fillStyle = gradient;
       } else {
         const gradient = ctx.createLinearGradient(x, 0, x2, 0);
-        gradient.addColorStop(0, this.colorFrom || color || defaultColors[0]);
-        gradient.addColorStop(1, this.colorTo || color || defaultColors[0]);
+        gradient.addColorStop(0, this.colorFrom || color || NODE_PALETTE[0]);
+        gradient.addColorStop(1, this.colorTo || color || NODE_PALETTE[0]);
         ctx.fillStyle = gradient;
       }
     } else {
-      ctx.fillStyle = color || defaultColors[0];
+      ctx.fillStyle = color || NODE_PALETTE[0];
     }
 
     ctx.beginPath();
@@ -332,6 +326,41 @@ FlowElement.id = 'flow';
 FlowElement.defaults = {};
 
 /**
+ * Option keys of a sankey dataset, resolved by SankeyController#_resolveOptions.
+ * Object-valued keys listed in NESTED_OPTIONS are deep-merged across layers.
+ */
+const OPTION_KEYS = [
+  'orientation', 'colorMode', 'color', 'hoverColor',
+  'nodeWidth', 'nodePadding', 'nodeColor', 'nodeColors',
+  'nodeBorderColor', 'nodeBorderWidth', 'nodeBorderRadius', 'nodes',
+  'labels', 'flowLabels', 'onFlowClick', 'onNodeClick'
+];
+const NESTED_OPTIONS = ['labels', 'flowLabels'];
+
+function isPlainObject(value) {
+  return value !== null && typeof value === 'object' && Object.getPrototypeOf(value) === Object.prototype;
+}
+
+/** Deep-merge plain objects; later sources win, `undefined` values are skipped. */
+function mergeOptions(target, source) {
+  if (!isPlainObject(source)) return target;
+  for (const [key, value] of Object.entries(source)) {
+    if (value === undefined) continue;
+    target[key] = isPlainObject(value) ? mergeOptions(isPlainObject(target[key]) ? { ...target[key] } : {}, value) : value;
+  }
+  return target;
+}
+
+function nodeAt(controller, x, y) {
+  for (const [nodeId, pos] of controller._nodePositions || []) {
+    if (x >= pos.x && x <= pos.x + pos.width && y >= pos.y && y <= pos.y + pos.height) {
+      return nodeId;
+    }
+  }
+  return null;
+}
+
+/**
  * Sankey Diagram Controller for Chart.js
  */
 export class SankeyController extends DatasetController {
@@ -354,18 +383,18 @@ export class SankeyController extends DatasetController {
         animation: { duration: 200 }
       }
     },
-    maintainAspectRatio: false,
-    aspectRatio: 1,
     orientation: 'horizontal',
     colorMode: 'from',
+    color: null,
     hoverColor: null,
     nodeWidth: 20,
     nodePadding: 10,
-    nodeColor: 'rgba(0, 0, 0, 0.8)',
+    nodeColor: null,
     nodeColors: null,
     nodeBorderColor: 'rgba(0, 0, 0, 0)',
     nodeBorderWidth: 0,
     nodeBorderRadius: 0,
+    nodes: null,
     labels: {
       display: true,
       font: { size: 12, family: 'sans-serif' },
@@ -380,10 +409,8 @@ export class SankeyController extends DatasetController {
       color: 'rgba(0, 0, 0, 0.8)',
       formatter: null
     },
-    scales: {
-      x: { type: 'linear', display: false },
-      y: { type: 'linear', display: false }
-    }
+    onFlowClick: null,
+    onNodeClick: null
   };
 
   static overrides = {
@@ -405,125 +432,46 @@ export class SankeyController extends DatasetController {
         }
       }
     },
+    // Hidden scales: layout happens in pixel space, but Chart.js dataset
+    // controllers require an index and a value scale.
     scales: {
-      x: { display: false },
-      y: { display: false }
+      x: { type: 'linear', display: false },
+      y: { type: 'linear', display: false }
     }
   };
 
   initialize() {
     this.enableOptionSharing = true;
     super.initialize();
-    this._bindClickHandler();
-    this._bindMouseTracker();
   }
 
-  destroy() {
-    if (this._clickHandler) {
-      this.chart.canvas.removeEventListener('click', this._clickHandler);
-      this.chart._sankeyClickBound = false;
-    }
-    if (this._mouseMoveHandler) {
-      this.chart.canvas.removeEventListener('mousemove', this._mouseMoveHandler);
-      this.chart.canvas.removeEventListener('mouseleave', this._mouseLeaveHandler);
-      this.chart._sankeyMouseBound = false;
-    }
-    super.destroy();
-  }
-
-  _bindClickHandler() {
-    if (this.chart._sankeyClickBound) return;
-    this.chart._sankeyClickBound = true;
-
-    const canvas = this.chart.canvas;
-    this._clickHandler = (event) => {
-      const rect = canvas.getBoundingClientRect();
-      // Use CSS pixel coordinates (Chart.js positions are in CSS pixels, not device pixels)
-      const mouseX = event.clientX - rect.left;
-      const mouseY = event.clientY - rect.top;
-      this._handleClick(mouseX, mouseY, event);
-    };
-    canvas.addEventListener('click', this._clickHandler);
-  }
-
-  _bindMouseTracker() {
-    if (this.chart._sankeyMouseBound) return;
-    this.chart._sankeyMouseBound = true;
-
-    const chart = this.chart;
-    const canvas = chart.canvas;
-    this._mouseMoveHandler = (event) => {
-      const rect = canvas.getBoundingClientRect();
-      // Use CSS pixel coordinates (Chart.js positions are in CSS pixels, not device pixels)
-      const x = event.clientX - rect.left;
-      const y = event.clientY - rect.top;
-
-      // Find which node the mouse is over (across all sankey datasets)
-      let hoveredNodeId = null;
-      for (const meta of chart._metasets) {
-        if (meta.type !== 'sankey') continue;
-        const ctrl = meta.controller;
-        if (!ctrl._nodePositions) continue;
-        for (const [nodeId, pos] of ctrl._nodePositions) {
-          if (x >= pos.x && x <= pos.x + pos.width &&
-              y >= pos.y && y <= pos.y + pos.height) {
-            hoveredNodeId = nodeId;
-            break;
-          }
-        }
-        if (hoveredNodeId) break;
-      }
-
-      const prev = chart._sankeyMouse;
-      const prevNode = prev && prev.hoveredNodeId;
-      chart._sankeyMouse = { x, y, hoveredNodeId };
-
-      // Redraw when the hovered node changes
-      if (hoveredNodeId !== prevNode) {
-        chart.draw();
-      }
-    };
-    this._mouseLeaveHandler = () => {
-      const prev = chart._sankeyMouse;
-      chart._sankeyMouse = null;
-      if (prev && prev.hoveredNodeId) {
-        chart.draw();
-      }
-    };
-    canvas.addEventListener('mousemove', this._mouseMoveHandler);
-    canvas.addEventListener('mouseleave', this._mouseLeaveHandler);
-  }
-
-  _handleClick(mouseX, mouseY, event) {
-    // Iterate all sankey datasets on this chart
-    for (const meta of this.chart._metasets) {
-      if (meta.type !== 'sankey') continue;
-      const controller = meta.controller;
-      const dataset = controller.getDataset();
-      const data = dataset.data || [];
-
-      // Check flows
-      if (typeof dataset.onFlowClick === 'function') {
-        for (let i = meta.data.length - 1; i >= 0; i--) {
-          if (meta.data[i].inRange(mouseX, mouseY)) {
-            dataset.onFlowClick(data[i], event);
-            return;
-          }
-        }
-      }
-
-      // Check nodes
-      if (typeof dataset.onNodeClick === 'function' && controller._nodePositions) {
-        for (const [nodeId, pos] of controller._nodePositions) {
-          if (mouseX >= pos.x && mouseX <= pos.x + pos.width &&
-              mouseY >= pos.y && mouseY <= pos.y + pos.height) {
-            const node = controller._nodes ? controller._nodes.get(nodeId) : null;
-            dataset.onNodeClick(nodeId, node, event);
-            return;
-          }
+  /**
+   * Sankey options for this dataset, merged from (lowest to highest
+   * priority): the plugin defaults, `Chart.defaults.datasets.sankey`, the
+   * chart's `options.datasets.sankey` and the dataset itself.
+   *
+   * Raw values are read on purpose instead of `this.options`: Chart.js's
+   * option resolver would call function values (`formatter`, `nodeColor`,
+   * `onFlowClick`, ...) as scriptable options.
+   */
+  _resolveOptions() {
+    const layers = [
+      SankeyController.defaults,
+      chartDefaults.datasets && chartDefaults.datasets.sankey,
+      this.chart.config.options && this.chart.config.options.datasets && this.chart.config.options.datasets.sankey,
+      this.getDataset()
+    ];
+    const opts = {};
+    for (const key of OPTION_KEYS) {
+      if (NESTED_OPTIONS.includes(key)) {
+        opts[key] = layers.reduce((acc, layer) => mergeOptions(acc, layer && layer[key]), {});
+      } else {
+        for (const layer of layers) {
+          if (layer && layer[key] !== undefined) opts[key] = layer[key];
         }
       }
     }
+    return opts;
   }
 
   parseObjectData(meta, data, start, count) {
@@ -552,11 +500,11 @@ export class SankeyController extends DatasetController {
   }
 
   updateElements(elements, start, count, mode) {
-    const dataset = this.getDataset();
-    const defaults = SankeyController.defaults;
-    const data = dataset.data || [];
+    const opts = this._opts = this._resolveOptions();
+    const data = this.getDataset().data || [];
     const validData = data.filter(isValidFlow);
-    const orientation = dataset.orientation ?? defaults.orientation;
+    const orientation = opts.orientation;
+    this._orientation = orientation;
 
     if (validData.length === 0) {
       this._nodePositions = new Map();
@@ -568,29 +516,19 @@ export class SankeyController extends DatasetController {
     }
 
     const nodes = buildNodes(validData);
-    const levels = assignNodeLevels(validData, nodes, dataset.nodes);
+    const levels = assignNodeLevels(validData, nodes, opts.nodes);
     const nodesByLevel = groupByLevel(levels);
     reorderNodes(nodesByLevel, validData);
 
     this._nodes = nodes;
     this._levels = levels;
     this._maxLevel = Math.max(0, ...levels.values());
-    this._orientation = orientation;
-
-    // Resolve node colors for colorMode usage
-    const resolvedColors = new Map();
-    let idx = 0;
-    for (const id of nodes.keys()) {
-      resolvedColors.set(id, resolveNodeColor(id, dataset, idx++));
-    }
-    this._resolvedNodeColors = resolvedColors;
+    this._resolvedNodeColors = this._resolveNodeColors(nodes, opts);
 
     const nodePositions = this._positionNodes(nodes, levels, nodesByLevel, orientation);
     this._nodePositions = nodePositions;
 
-    const colorMode = dataset.colorMode ?? defaults.colorMode;
-    const hoverColor = dataset.hoverColor ?? defaults.hoverColor;
-    const flows = this._computeFlows(data, nodePositions, dataset, colorMode, orientation);
+    const flows = this._computeFlows(data, nodePositions, opts);
 
     for (let i = start; i < start + count; i++) {
       const flow = flows[i];
@@ -603,10 +541,10 @@ export class SankeyController extends DatasetController {
           height: flow.height,
           height2: flow.height2,
           color: flow.color,
-          colorMode,
+          colorMode: opts.colorMode,
           colorFrom: flow.colorFrom,
           colorTo: flow.colorTo,
-          hoverColor: flow.hoverColor || hoverColor,
+          hoverColor: flow.hoverColor,
           orientation,
           from: flow.from,
           to: flow.to
@@ -615,24 +553,42 @@ export class SankeyController extends DatasetController {
     }
   }
 
+  /**
+   * Node fill colors: `nodeColors[id]`, then `nodeColor` (string or
+   * `(id, node) => string`), then the default palette.
+   */
+  _resolveNodeColors(nodes, opts) {
+    const colors = new Map();
+    let index = 0;
+    for (const [id, node] of nodes) {
+      let c = opts.nodeColors ? opts.nodeColors[id] : undefined;
+      if (c == null) c = typeof opts.nodeColor === 'function' ? opts.nodeColor(id, node) : opts.nodeColor;
+      if (c == null) c = NODE_PALETTE[index % NODE_PALETTE.length];
+      colors.set(id, c);
+      index++;
+    }
+    return colors;
+  }
+
   _positionNodes(nodes, levels, nodesByLevel, orientation) {
     const { chartArea } = this.chart;
     const { left, right, top, bottom } = chartArea;
     const chartWidth = right - left;
     const chartHeight = bottom - top;
 
-    const dataset = this.getDataset();
-    const defaults = SankeyController.defaults;
-    const nodeWidth = dataset.nodeWidth ?? defaults.nodeWidth;
-    const nodePadding = dataset.nodePadding ?? defaults.nodePadding;
+    const { nodeWidth, nodePadding } = this._opts;
     const isVertical = orientation === 'vertical';
-
-    // In vertical mode: levels run top-to-bottom, nodes stack left-to-right
-    const levelAxisLength = isVertical ? chartHeight : chartWidth;
-    const nodeAxisLength = isVertical ? chartWidth : chartHeight;
 
     const maxLevel = Math.max(0, ...levels.values());
     const levelCount = maxLevel + 1;
+
+    // In vertical mode: levels run top-to-bottom, nodes stack left-to-right.
+    // Labels drawn outside the first/last level get room reserved on the
+    // level axis so they stay inside the chart area.
+    const margins = this._labelMargins(nodes, nodesByLevel, maxLevel, isVertical,
+      isVertical ? chartHeight : chartWidth);
+    const levelAxisLength = (isVertical ? chartHeight : chartWidth) - margins.start - margins.end;
+    const nodeAxisLength = isVertical ? chartWidth : chartHeight;
     const levelSpacing = levelCount > 1
       ? (levelAxisLength - nodeWidth) / (levelCount - 1)
       : 0;
@@ -661,7 +617,7 @@ export class SankeyController extends DatasetController {
       const startPos = nodeAxisStart + (nodeAxisLength - totalHeight) / 2;
 
       // Level axis position
-      const levelAxisStart = isVertical ? top : left;
+      const levelAxisStart = (isVertical ? top : left) + margins.start;
       const levelPos = levelCount > 1
         ? levelAxisStart + level * levelSpacing
         : levelAxisStart + (levelAxisLength - nodeWidth) / 2;
@@ -693,80 +649,149 @@ export class SankeyController extends DatasetController {
     return positions;
   }
 
-  _computeFlows(data, nodePositions, dataset, colorMode, orientation) {
-    const outOffsets = new Map();
-    const inOffsets = new Map();
-    for (const id of nodePositions.keys()) {
-      outOffsets.set(id, 0);
-      inOffsets.set(id, 0);
+  _labelText(nodeId, node, cfg) {
+    return typeof cfg.formatter === 'function'
+      ? cfg.formatter(nodeId, node || { id: nodeId, incoming: 0, outgoing: 0, value: 0 })
+      : nodeId;
+  }
+
+  /**
+   * Side of the node a label is drawn on: 'left' | 'right' | 'top' | 'bottom'.
+   * 'auto' puts outer levels' labels outside the diagram and middle levels'
+   * labels above (horizontal) or to the left (vertical).
+   */
+  _labelSide(position, level, maxLevel, isVertical) {
+    if (position !== 'auto') return position;
+    if (maxLevel === 0) return 'top';
+    if (level === 0) return isVertical ? 'top' : 'left';
+    if (level === maxLevel) return isVertical ? 'bottom' : 'right';
+    return isVertical ? 'left' : 'top';
+  }
+
+  /**
+   * Space (in px) that labels of the first and last levels need outside the
+   * nodes, along the level axis. Each side is capped at a third of the axis.
+   */
+  _labelMargins(nodes, nodesByLevel, maxLevel, isVertical, axisLength) {
+    const cfg = this._opts.labels;
+    const nodeWidth = this._opts.nodeWidth;
+    const margins = { start: 0, end: 0 };
+    if (cfg.display === false) return margins;
+
+    const fontSize = cfg.font.size || 12;
+    const padding = cfg.padding ?? 5;
+    const position = cfg.position || 'auto';
+    const firstSide = this._labelSide(position, 0, maxLevel, isVertical);
+    const lastSide = this._labelSide(position, maxLevel, maxLevel, isVertical);
+
+    if (isVertical) {
+      // Text height is what overflows on the vertical level axis
+      const textHeight = fontSize + padding;
+      if (firstSide === 'top') margins.start = textHeight;
+      if (lastSide === 'bottom') margins.end = textHeight;
+    } else {
+      const ctx = this.chart.ctx;
+      ctx.save();
+      ctx.font = `${fontSize}px ${cfg.font.family || 'sans-serif'}`;
+      const widest = (level) => {
+        let max = 0;
+        for (const id of nodesByLevel.get(level) || []) {
+          max = Math.max(max, ctx.measureText(String(this._labelText(id, nodes.get(id), cfg))).width);
+        }
+        return max;
+      };
+      // Centered above/below the node: only the part wider than the node overflows
+      const centered = (level) => Math.max(0, widest(level) / 2 - nodeWidth / 2);
+      if (firstSide === 'left') margins.start = widest(0) + padding;
+      else if (firstSide === 'top' || firstSide === 'bottom') margins.start = centered(0);
+      if (lastSide === 'right') margins.end = widest(maxLevel) + padding;
+      else if (lastSide === 'top' || lastSide === 'bottom') margins.end = centered(maxLevel);
+      ctx.restore();
     }
+
+    const cap = axisLength / 3;
+    margins.start = Math.min(margins.start, cap);
+    margins.end = Math.min(margins.end, cap);
+    return margins;
+  }
+
+  _computeFlows(data, nodePositions, opts) {
+    const { colorMode, orientation } = opts;
     const isVertical = orientation === 'vertical';
+    // Node size along the stacking axis, and the node's center on that axis
+    const extent = pos => (isVertical ? pos.width : pos.height);
+    const center = pos => (isVertical ? pos.x + pos.width / 2 : pos.y + pos.height / 2);
+    // Band thickness of a flow where it meets the given node
+    const thickness = (dp, pos) => (pos.value > 0 ? (dp.flow / pos.value) * extent(pos) : 0);
+
+    const outgoing = new Map();
+    const incoming = new Map();
+    for (let i = 0; i < data.length; i++) {
+      const dp = data[i];
+      if (!isValidFlow(dp) || !nodePositions.has(dp.from) || !nodePositions.has(dp.to)) continue;
+      if (!outgoing.has(dp.from)) outgoing.set(dp.from, []);
+      outgoing.get(dp.from).push(i);
+      if (!incoming.has(dp.to)) incoming.set(dp.to, []);
+      incoming.get(dp.to).push(i);
+    }
+
+    // Stack each node's bands in the order of the nodes at their other end,
+    // so bands never cross each other where they attach to a node.
+    const stack = (byNode, otherEnd) => {
+      const offsets = new Array(data.length);
+      for (const [id, indices] of byNode) {
+        const pos = nodePositions.get(id);
+        indices.sort((a, b) =>
+          center(nodePositions.get(data[a][otherEnd])) - center(nodePositions.get(data[b][otherEnd])) || a - b);
+        let offset = 0;
+        for (const i of indices) {
+          offsets[i] = offset;
+          offset += thickness(data[i], pos);
+        }
+      }
+      return offsets;
+    };
+    const outOffsets = stack(outgoing, 'to');
+    const inOffsets = stack(incoming, 'from');
 
     const flows = new Array(data.length).fill(null);
     for (let i = 0; i < data.length; i++) {
+      if (outOffsets[i] === undefined) continue;
       const dp = data[i];
-      if (!isValidFlow(dp)) continue;
-
       const fromPos = nodePositions.get(dp.from);
       const toPos = nodePositions.get(dp.to);
-      if (!fromPos || !toPos) continue;
-
-      let sourceHeight, targetHeight;
-      if (isVertical) {
-        // In vertical mode, flow band width is along x-axis (fromPos.width holds the node's "size")
-        sourceHeight = fromPos.value > 0
-          ? (dp.flow / fromPos.value) * fromPos.width : 0;
-        targetHeight = toPos.value > 0
-          ? (dp.flow / toPos.value) * toPos.width : 0;
-      } else {
-        sourceHeight = fromPos.value > 0
-          ? (dp.flow / fromPos.value) * fromPos.height : 0;
-        targetHeight = toPos.value > 0
-          ? (dp.flow / toPos.value) * toPos.height : 0;
-      }
+      const sourceHeight = thickness(dp, fromPos);
+      const targetHeight = thickness(dp, toPos);
 
       let flowX, flowY, flowX2, flowY2;
       if (isVertical) {
         // Flow exits bottom of source, enters top of target
-        flowX = fromPos.x + outOffsets.get(dp.from) + sourceHeight / 2;
+        flowX = fromPos.x + outOffsets[i] + sourceHeight / 2;
         flowY = fromPos.y + fromPos.height; // bottom edge
-        flowX2 = toPos.x + inOffsets.get(dp.to) + targetHeight / 2;
+        flowX2 = toPos.x + inOffsets[i] + targetHeight / 2;
         flowY2 = toPos.y; // top edge
       } else {
         // Flow exits right of source, enters left of target
         flowX = fromPos.x + fromPos.width; // right edge
-        flowY = fromPos.y + outOffsets.get(dp.from) + sourceHeight / 2;
+        flowY = fromPos.y + outOffsets[i] + sourceHeight / 2;
         flowX2 = toPos.x; // left edge
-        flowY2 = toPos.y + inOffsets.get(dp.to) + targetHeight / 2;
+        flowY2 = toPos.y + inOffsets[i] + targetHeight / 2;
       }
 
-      outOffsets.set(dp.from, outOffsets.get(dp.from) + sourceHeight);
-      inOffsets.set(dp.to, inOffsets.get(dp.to) + targetHeight);
-
-      // Resolve color based on colorMode
-      let baseColor = dp.color || dataset.color || defaultColors[i % defaultColors.length];
-      let colorFrom, colorTo;
-
-      if (colorMode === 'from' && !dp.color) {
-        const nc = this._resolvedNodeColors?.get(dp.from);
-        if (nc && dataset.nodeColors) baseColor = nc;
-      } else if (colorMode === 'to' && !dp.color) {
-        const nc = this._resolvedNodeColors?.get(dp.to);
-        if (nc && dataset.nodeColors) baseColor = nc;
-      }
-
-      colorFrom = dp.colorFrom || baseColor;
-      colorTo = dp.colorTo || baseColor;
-      if (colorMode === 'gradient' && !dp.colorFrom && !dp.colorTo) {
-        const fromNodeColor = this._resolvedNodeColors?.get(dp.from);
-        const toNodeColor = this._resolvedNodeColors?.get(dp.to);
-        if (dataset.nodeColors && fromNodeColor && toNodeColor) {
-          colorFrom = fromNodeColor;
-          colorTo = toNodeColor;
-        } else {
-          colorFrom = baseColor;
-          colorTo = adjustAlpha(baseColor, 0.2);
-        }
+      // Colors: an explicit flow/dataset color wins, otherwise derive from the
+      // source and target node colors (made translucent).
+      const solid = dp.color ?? opts.color;
+      let color, colorFrom, colorTo;
+      if (solid != null) {
+        color = solid;
+        colorFrom = dp.colorFrom ?? solid;
+        colorTo = dp.colorTo ?? solid;
+      } else {
+        const source = withAlpha(this._resolvedNodeColors.get(dp.from), FLOW_ALPHA);
+        const target = withAlpha(this._resolvedNodeColors.get(dp.to), FLOW_ALPHA);
+        color = colorMode === 'to' ? target : source;
+        colorFrom = dp.colorFrom ?? source;
+        colorTo = dp.colorTo ?? target;
       }
 
       flows[i] = {
@@ -776,10 +801,10 @@ export class SankeyController extends DatasetController {
         y2: flowY2,
         height: sourceHeight,
         height2: targetHeight,
-        color: baseColor,
+        color,
         colorFrom,
         colorTo,
-        hoverColor: dp.hoverColor || null,
+        hoverColor: dp.hoverColor ?? opts.hoverColor ?? null,
         from: dp.from,
         to: dp.to,
         value: dp.flow
@@ -789,19 +814,22 @@ export class SankeyController extends DatasetController {
     return flows;
   }
 
+  /** The node hovered in this dataset, if any (tracked by SankeyPlugin). */
+  _getHoveredNode() {
+    const hovered = this.chart.$sankey && this.chart.$sankey.hovered;
+    return hovered && hovered.datasetIndex === this.index ? hovered.nodeId : null;
+  }
+
   draw() {
     const { ctx } = this.chart;
     const meta = this._cachedMeta;
+    this._opts = this._resolveOptions();
 
     // Determine which elements are active (hovered)
     const activeElements = this.chart.getActiveElements();
     const activeSet = new Set(activeElements.map(a => a.element));
     const hasActiveFlows = activeElements.some(a => a.datasetIndex === this.index);
-
-    // Use the tracked hovered node from mousemove handler
-    const mouse = this.chart._sankeyMouse;
-    const hoveredNode = mouse ? mouse.hoveredNodeId : null;
-    this._hoveredNode = hoveredNode;
+    const hoveredNode = this._getHoveredNode();
 
     // Draw flows (elements draw themselves)
     for (const element of meta.data) {
@@ -818,32 +846,22 @@ export class SankeyController extends DatasetController {
 
     // Draw nodes on top
     if (this._nodePositions && this._nodePositions.size > 0) {
-      this._drawNodes(ctx);
+      this._drawNodes(ctx, hoveredNode);
     }
   }
 
   _drawFlowLabels(ctx) {
-    const dataset = this.getDataset();
-    // Merge defaults with dataset config directly (avoid this.options which uses
-    // Chart.js's resolver proxy that calls functions as scriptable options)
-    const flowLabelsCfg = {
-      ...SankeyController.defaults.flowLabels,
-      ...(dataset.flowLabels || {}),
-      font: {
-        ...SankeyController.defaults.flowLabels.font,
-        ...(dataset.flowLabels?.font || {})
-      }
-    };
-    if (!flowLabelsCfg.display) return;
+    const cfg = this._opts.flowLabels;
+    if (!cfg.display) return;
 
     const meta = this._cachedMeta;
-    const data = dataset.data || [];
-    const formatter = flowLabelsCfg.formatter;
-    const fontSize = flowLabelsCfg.font.size || 10;
+    const data = this.getDataset().data || [];
+    const formatter = cfg.formatter;
+    const fontSize = cfg.font.size || 10;
 
     ctx.save();
-    ctx.font = `${fontSize}px ${flowLabelsCfg.font.family || 'sans-serif'}`;
-    ctx.fillStyle = flowLabelsCfg.color || 'rgba(0, 0, 0, 0.8)';
+    ctx.font = `${fontSize}px ${cfg.font.family || 'sans-serif'}`;
+    ctx.fillStyle = cfg.color || 'rgba(0, 0, 0, 0.8)';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
 
@@ -865,52 +883,36 @@ export class SankeyController extends DatasetController {
     ctx.restore();
   }
 
-  _drawNodes(ctx) {
-    const dataset = this.getDataset();
-    const defaults = SankeyController.defaults;
-    const nodeBorderColor = dataset.nodeBorderColor ?? defaults.nodeBorderColor;
-    const nodeBorderWidth = dataset.nodeBorderWidth ?? defaults.nodeBorderWidth;
-    const nodeBorderRadius = dataset.nodeBorderRadius ?? defaults.nodeBorderRadius;
-    // Merge defaults with dataset config directly (avoid this.options which uses
-    // Chart.js's resolver proxy that calls functions as scriptable options)
-    const labelsCfg = {
-      ...defaults.labels,
-      ...(dataset.labels || {}),
-      font: {
-        ...defaults.labels.font,
-        ...(dataset.labels?.font || {})
-      }
-    };
-
+  _drawNodes(ctx, hoveredNode) {
+    const { nodeBorderColor, nodeBorderWidth, nodeBorderRadius, labels: labelsCfg } = this._opts;
     const levels = this._levels || new Map();
     const maxLevel = this._maxLevel || 0;
     const nodes = this._nodes || new Map();
     const resolvedColors = this._resolvedNodeColors || new Map();
-    const orientation = this._orientation || 'horizontal';
-    const isVertical = orientation === 'vertical';
-    const formatter = dataset.labels?.formatter ?? defaults.labels.formatter;
+    const isVertical = this._orientation === 'vertical';
 
-    const hoveredNode = this._hoveredNode;
+    // Nodes directly connected to the hovered node stay fully opaque
+    let connected = null;
+    if (hoveredNode) {
+      connected = new Set();
+      for (const f of this.getDataset().data || []) {
+        if (!f) continue;
+        if (f.from === hoveredNode) connected.add(f.to);
+        if (f.to === hoveredNode) connected.add(f.from);
+      }
+    }
 
     for (const [nodeId, pos] of this._nodePositions) {
+      const node = nodes.get(nodeId);
       ctx.save();
 
       // Dim unrelated nodes when a node is hovered
-      if (hoveredNode && nodeId !== hoveredNode) {
-        // Check if this node is directly connected to the hovered node
-        const dataset2 = dataset.data || [];
-        const isConnected = dataset2.some(
-          f => (f.from === hoveredNode && f.to === nodeId)
-            || (f.to === hoveredNode && f.from === nodeId)
-        );
-        if (!isConnected) {
-          ctx.globalAlpha = 0.3;
-        }
+      if (connected && nodeId !== hoveredNode && !connected.has(nodeId)) {
+        ctx.globalAlpha = 0.3;
       }
 
       // Node fill
-      const color = resolvedColors.get(nodeId) || 'rgba(0, 0, 0, 0.8)';
-      ctx.fillStyle = color;
+      ctx.fillStyle = resolvedColors.get(nodeId) || NODE_PALETTE[0];
       ctx.beginPath();
       drawRoundedRect(ctx, pos.x, pos.y, pos.width, pos.height, nodeBorderRadius);
       ctx.fill();
@@ -926,9 +928,8 @@ export class SankeyController extends DatasetController {
 
       // Node border
       if (nodeBorderWidth > 0) {
-        const borderColor = typeof nodeBorderColor === 'function'
-          ? nodeBorderColor(nodeId) : nodeBorderColor;
-        ctx.strokeStyle = borderColor;
+        ctx.strokeStyle = typeof nodeBorderColor === 'function'
+          ? nodeBorderColor(nodeId, node) : nodeBorderColor;
         ctx.lineWidth = nodeBorderWidth;
         ctx.beginPath();
         drawRoundedRect(ctx, pos.x, pos.y, pos.width, pos.height, nodeBorderRadius);
@@ -937,81 +938,29 @@ export class SankeyController extends DatasetController {
 
       // Label
       if (labelsCfg.display !== false) {
-        const fontSize = labelsCfg.font.size || 12;
-        const fontFamily = labelsCfg.font.family || 'sans-serif';
         const padding = labelsCfg.padding ?? 5;
-        const level = levels.get(nodeId) ?? 0;
-        const position = labelsCfg.position || 'auto';
-        const node = nodes.get(nodeId);
-
-        const labelText = typeof formatter === 'function'
-          ? formatter(nodeId, node || { id: nodeId, incoming: 0, outgoing: 0, value: 0 })
-          : nodeId;
+        const side = this._labelSide(labelsCfg.position || 'auto', levels.get(nodeId) ?? 0, maxLevel, isVertical);
 
         ctx.fillStyle = labelsCfg.color || 'rgba(0, 0, 0, 1)';
-        ctx.font = `${fontSize}px ${fontFamily}`;
+        ctx.font = `${labelsCfg.font.size || 12}px ${labelsCfg.font.family || 'sans-serif'}`;
+        const text = this._labelText(nodeId, node, labelsCfg);
 
-        if (isVertical) {
-          // Vertical: levels run top-to-bottom
-          if (position === 'auto' && maxLevel > 0) {
-            if (level === 0) {
-              // Top row: label above
-              ctx.textAlign = 'center';
-              ctx.textBaseline = 'bottom';
-              ctx.fillText(labelText, pos.x + pos.width / 2, pos.y - padding);
-            } else if (level === maxLevel) {
-              // Bottom row: label below
-              ctx.textAlign = 'center';
-              ctx.textBaseline = 'top';
-              ctx.fillText(labelText, pos.x + pos.width / 2, pos.y + pos.height + padding);
-            } else {
-              // Middle: label to the left
-              ctx.textAlign = 'right';
-              ctx.textBaseline = 'middle';
-              ctx.fillText(labelText, pos.x - padding, pos.y + pos.height / 2);
-            }
-          } else if (position === 'left') {
-            ctx.textAlign = 'right';
-            ctx.textBaseline = 'middle';
-            ctx.fillText(labelText, pos.x - padding, pos.y + pos.height / 2);
-          } else if (position === 'right') {
-            ctx.textAlign = 'left';
-            ctx.textBaseline = 'middle';
-            ctx.fillText(labelText, pos.x + pos.width + padding, pos.y + pos.height / 2);
-          } else {
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'bottom';
-            ctx.fillText(labelText, pos.x + pos.width / 2, pos.y - padding);
-          }
+        if (side === 'left') {
+          ctx.textAlign = 'right';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(text, pos.x - padding, pos.y + pos.height / 2);
+        } else if (side === 'right') {
+          ctx.textAlign = 'left';
+          ctx.textBaseline = 'middle';
+          ctx.fillText(text, pos.x + pos.width + padding, pos.y + pos.height / 2);
+        } else if (side === 'bottom') {
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'top';
+          ctx.fillText(text, pos.x + pos.width / 2, pos.y + pos.height + padding);
         } else {
-          // Horizontal mode (original)
-          if (position === 'auto' && maxLevel > 0) {
-            if (level === 0) {
-              ctx.textAlign = 'right';
-              ctx.textBaseline = 'middle';
-              ctx.fillText(labelText, pos.x - padding, pos.y + pos.height / 2);
-            } else if (level === maxLevel) {
-              ctx.textAlign = 'left';
-              ctx.textBaseline = 'middle';
-              ctx.fillText(labelText, pos.x + pos.width + padding, pos.y + pos.height / 2);
-            } else {
-              ctx.textAlign = 'center';
-              ctx.textBaseline = 'bottom';
-              ctx.fillText(labelText, pos.x + pos.width / 2, pos.y - padding);
-            }
-          } else if (position === 'left') {
-            ctx.textAlign = 'right';
-            ctx.textBaseline = 'middle';
-            ctx.fillText(labelText, pos.x - padding, pos.y + pos.height / 2);
-          } else if (position === 'right') {
-            ctx.textAlign = 'left';
-            ctx.textBaseline = 'middle';
-            ctx.fillText(labelText, pos.x + pos.width + padding, pos.y + pos.height / 2);
-          } else {
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'bottom';
-            ctx.fillText(labelText, pos.x + pos.width / 2, pos.y - padding);
-          }
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'bottom';
+          ctx.fillText(text, pos.x + pos.width / 2, pos.y - padding);
         }
       }
 
@@ -1020,7 +969,74 @@ export class SankeyController extends DatasetController {
   }
 }
 
-Chart.register(SankeyController, FlowElement);
+/**
+ * Chart.js plugin handling sankey interactions through Chart.js's own event
+ * pipeline (so `options.events`, touch input and canvas offsets are honoured):
+ * node hover highlighting and the `onFlowClick` / `onNodeClick` callbacks.
+ * It only acts on charts that contain sankey datasets.
+ */
+export const SankeyPlugin = {
+  id: 'sankeyInteraction',
+
+  afterEvent(chart, args) {
+    const metas = chart.getSortedVisibleDatasetMetas().filter(meta => meta.type === 'sankey');
+    if (metas.length === 0) return;
+    const { event } = args;
+    const state = chart.$sankey || (chart.$sankey = { hovered: null });
+
+    if (event.type === 'click') {
+      // metas[0] is drawn last, i.e. on top: test it first
+      for (const meta of metas) {
+        const controller = meta.controller;
+        const opts = controller._resolveOptions();
+        const native = event.native || event;
+        if (typeof opts.onNodeClick === 'function') {
+          const nodeId = nodeAt(controller, event.x, event.y);
+          if (nodeId != null) {
+            opts.onNodeClick(nodeId, controller._nodes.get(nodeId), native);
+            return;
+          }
+        }
+        if (typeof opts.onFlowClick === 'function') {
+          const data = controller.getDataset().data || [];
+          for (let i = meta.data.length - 1; i >= 0; i--) {
+            if (meta.data[i].inRange(event.x, event.y)) {
+              opts.onFlowClick(data[i], native);
+              return;
+            }
+          }
+        }
+      }
+      return;
+    }
+
+    let hovered = null;
+    if (event.type !== 'mouseout') {
+      for (const meta of metas) {
+        const nodeId = nodeAt(meta.controller, event.x, event.y);
+        if (nodeId != null) {
+          hovered = { datasetIndex: meta.index, nodeId };
+          break;
+        }
+      }
+    }
+    const prev = state.hovered;
+    if ((prev && prev.nodeId) !== (hovered && hovered.nodeId)
+        || (prev && prev.datasetIndex) !== (hovered && hovered.datasetIndex)) {
+      state.hovered = hovered;
+      args.changed = true;
+    }
+  },
+
+  afterDestroy(chart) {
+    delete chart.$sankey;
+  }
+};
+
+// The browser builds and the module builds all register everything needed on
+// import: the controller, its element, the interaction plugin and the hidden
+// linear scales the controller relies on.
+Chart.register(SankeyController, FlowElement, SankeyPlugin, LinearScale);
 
 export { FlowElement as Flow };
 export default SankeyController;

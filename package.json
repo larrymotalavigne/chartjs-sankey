@@ -1,11 +1,26 @@
 {
   "name": "@larrym/chartjs-plugin-sankey",
-  "version": "3.0.0",
+  "version": "4.0.0-beta.1",
   "description": "Chart.js plugin for creating Sankey diagrams",
   "type": "module",
-  "main": "dist/chartjs-plugin-sankey.js",
-  "module": "dist/chartjs-plugin-sankey.esm.js",
-  "types": "src/index.d.ts",
+  "main": "./dist/chartjs-plugin-sankey.cjs",
+  "module": "./dist/chartjs-plugin-sankey.esm.js",
+  "types": "./dist/chartjs-plugin-sankey.d.ts",
+  "unpkg": "./dist/chartjs-plugin-sankey.min.js",
+  "jsdelivr": "./dist/chartjs-plugin-sankey.min.js",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/chartjs-plugin-sankey.d.ts",
+        "default": "./dist/chartjs-plugin-sankey.esm.js"
+      },
+      "require": {
+        "types": "./dist/chartjs-plugin-sankey.d.cts",
+        "default": "./dist/chartjs-plugin-sankey.cjs"
+      }
+    },
+    "./package.json": "./package.json"
+  },
   "files": [
     "dist",
     "src"
@@ -14,8 +29,12 @@
     "build": "rollup -c",
     "dev": "rollup -c -w",
     "prepare": "npm run build",
+    "lint": "eslint .",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "test:types": "tsc -p test/types",
+    "test:package": "node scripts/smoke-test.cjs && publint --strict && attw --pack ."
   },
   "keywords": [
     "chart.js",
@@ -26,24 +45,32 @@
     "visualization",
     "plugin"
   ],
-  "author": "",
+  "author": "Larry Mota--Lavigne <larry.motalavigne@gmail.com>",
   "license": "MIT",
   "peerDependencies": {
     "chart.js": "^4.0.0"
   },
   "devDependencies": {
+    "@arethetypeswrong/cli": "^0.18.5",
     "@babel/core": "^7.23.0",
     "@babel/preset-env": "^7.23.0",
+    "@eslint/js": "^9.39.5",
     "@rollup/plugin-babel": "^6.0.4",
     "@rollup/plugin-node-resolve": "^15.2.3",
     "@rollup/plugin-terser": "^0.4.4",
+    "@vitest/coverage-v8": "^3.2.4",
     "chart.js": "^4.4.0",
+    "eslint": "^9.39.5",
+    "globals": "^17.13.0",
+    "jsdom": "^26.1.0",
+    "publint": "^0.3.25",
     "rollup": "^4.9.0",
+    "typescript": "^5.9.3",
     "vitest": "^3.2.4"
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/larrymotalavigne/chartjs-sankey.git"
+    "url": "git+https://github.com/larrymotalavigne/chartjs-sankey.git"
   },
   "bugs": {
     "url": "https://github.com/larrymotalavigne/chartjs-sankey/issues"
