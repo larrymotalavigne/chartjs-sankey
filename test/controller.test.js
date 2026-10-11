@@ -40,7 +40,7 @@ describe('SankeyController registration', () => {
 
 describe('SankeyController layout (horizontal)', () => {
   it('places one column per level across the full width', () => {
-    const s = sankey({ data: chain });
+    const s = sankey({ data: chain, labels: { display: false } });
     const p = positions(s);
     expect(p.A.x).toBe(0);
     expect(p.B.x).toBe((W - NODE_WIDTH) / 2);
@@ -70,7 +70,7 @@ describe('SankeyController layout (horizontal)', () => {
   });
 
   it('honours nodeWidth', () => {
-    const s = sankey({ data: chain, nodeWidth: 8 });
+    const s = sankey({ data: chain, nodeWidth: 8, labels: { display: false } });
     const p = positions(s);
     expect(p.A.width).toBe(8);
     expect(p.C.x).toBe(W - 8);
@@ -102,9 +102,62 @@ describe('SankeyController layout (horizontal)', () => {
   });
 });
 
+describe('SankeyController label space', () => {
+  // The mock context measures text as 6px per character; default padding is 5px.
+  const CHAR = 6;
+  const PAD = 5;
+
+  it('reserves room for outer labels in auto mode (horizontal)', () => {
+    const s = sankey({ data: [{ from: 'Source', to: 'Sink', flow: 1 }] });
+    const p = positions(s);
+    expect(p.Source.x).toBe(6 * CHAR + PAD);
+    expect(p.Sink.x + p.Sink.width).toBe(W - (4 * CHAR + PAD));
+    // Labels are drawn inside the canvas
+    for (const call of s.calls('fillText')) {
+      const [text, x] = call.args;
+      const width = String(text).length * CHAR;
+      const leftEdge = call.textAlign === 'right' ? x - width : x;
+      expect(leftEdge).toBeGreaterThanOrEqual(0);
+      expect(leftEdge + width).toBeLessThanOrEqual(W);
+    }
+  });
+
+  it('measures formatted labels', () => {
+    const s = sankey({ data: chain, labels: { formatter: (id) => `${id}-long-label` } });
+    expect(positions(s).A.x).toBe('A-long-label'.length * CHAR + PAD);
+  });
+
+  it("reserves only the left side with position 'left' and the right side with 'right'", () => {
+    let s = sankey({ data: chain, labels: { position: 'left' } });
+    expect(positions(s).A.x).toBe(CHAR + PAD);
+    expect(positions(s).C.x).toBe(W - NODE_WIDTH);
+    current.cleanup();
+    s = sankey({ data: chain, labels: { position: 'right' } });
+    expect(positions(s).A.x).toBe(0);
+    expect(positions(s).C.x).toBe(W - NODE_WIDTH - (CHAR + PAD));
+  });
+
+  it("reserves text height above and below in vertical auto mode", () => {
+    const s = sankey({ data: chain, orientation: 'vertical', labels: { font: { size: 14 } } });
+    const p = positions(s);
+    expect(p.A.y).toBe(14 + PAD);
+    expect(p.C.y + p.C.height).toBe(H - (14 + PAD));
+  });
+
+  it('caps the reserved space at a third of the axis', () => {
+    const s = sankey({ data: chain, labels: { formatter: (id) => id.repeat(200) } });
+    expect(positions(s).A.x).toBeCloseTo(W / 3);
+  });
+
+  it('reserves nothing when labels are hidden', () => {
+    const s = sankey({ data: chain, labels: { display: false } });
+    expect(positions(s).A.x).toBe(0);
+  });
+});
+
 describe('SankeyController layout (vertical)', () => {
   it('places levels top to bottom and stacks nodes left to right', () => {
-    const s = sankey({ data: fanOut, orientation: 'vertical', nodePadding: 10 });
+    const s = sankey({ data: fanOut, orientation: 'vertical', nodePadding: 10, labels: { display: false } });
     const p = positions(s);
     expect(p.A.y).toBe(0);
     expect(p.B.y).toBe(H - NODE_WIDTH);
@@ -163,6 +216,39 @@ describe('SankeyController flows', () => {
     expect(cd.height2).toBeCloseTo(p.D.height);
   });
 
+  it('orders bands at each node like the nodes at their other end (no crossings at ports)', () => {
+    const data = [
+      { from: 'A', to: 'Z', flow: 5 },
+      { from: 'B', to: 'X', flow: 8 },
+      { from: 'A', to: 'X', flow: 10 },
+      { from: 'B', to: 'Z', flow: 3 },
+      { from: 'A', to: 'Y', flow: 4 },
+      { from: 'B', to: 'Y', flow: 6 },
+      { from: 'C', to: 'X', flow: 2 }
+    ];
+    for (const orientation of ['horizontal', 'vertical']) {
+      const s = sankey({ data, orientation });
+      const p = positions(s);
+      const axis = orientation === 'vertical' ? 'x' : 'y';
+      const size = orientation === 'vertical' ? 'width' : 'height';
+      const center = (id) => p[id][axis] + p[id][size] / 2;
+      const els = s.elements;
+      for (let i = 0; i < data.length; i++) {
+        for (let j = 0; j < data.length; j++) {
+          if (i === j) continue;
+          if (data[i].from === data[j].from && center(data[i].to) < center(data[j].to)) {
+            expect(els[i][axis]).toBeLessThan(els[j][axis]);
+          }
+          if (data[i].to === data[j].to && center(data[i].from) < center(data[j].from)) {
+            expect(els[i][axis + '2']).toBeLessThan(els[j][axis + '2']);
+          }
+        }
+      }
+      current.cleanup();
+      current = null;
+    }
+  });
+
   it('skips invalid data points without breaking the others', () => {
     const s = sankey({
       data: [
@@ -177,6 +263,20 @@ describe('SankeyController flows', () => {
     expect(s.elements[1].x).toBeUndefined();
   });
 
+  it('ignores self-loops in layout and rendering', () => {
+    const s = sankey({
+      data: [
+        { from: 'A', to: 'B', flow: 10 },
+        { from: 'B', to: 'B', flow: 50 }
+      ],
+      labels: { display: false }
+    });
+    const p = positions(s);
+    expect(p.B.x).toBe(W - NODE_WIDTH);
+    expect(s.controller._nodes.get('B').value).toBe(10);
+    expect(s.elements[1].x).toBeUndefined();
+  });
+
   it('handles an empty dataset', () => {
     const s = sankey({ data: [] });
     expect(s.controller._nodePositions.size).toBe(0);
@@ -184,7 +284,7 @@ describe('SankeyController flows', () => {
   });
 
   it('re-lays out after data changes', () => {
-    const s = sankey({ data: chain });
+    const s = sankey({ data: chain, labels: { display: false } });
     s.chart.data.datasets[0].data = [...chain, { from: 'C', to: 'D', flow: 4 }];
     s.chart.update();
     const p = positions(s);
@@ -346,6 +446,28 @@ describe('SankeyController events', () => {
     s.chart.destroy();
     click(canvas, a.x + 1, a.y + 1);
     expect(onNodeClick).not.toHaveBeenCalled();
+  });
+
+  it('dims nodes that are not connected to the hovered node', () => {
+    const nodeColors = { A: 'red', B: 'green', C: 'blue', D: 'black' };
+    const s = sankey({
+      data: [
+        { from: 'A', to: 'C', flow: 10 },
+        { from: 'B', to: 'D', flow: 10 },
+        null
+      ],
+      nodeColors
+    });
+    const a = positions(s).A;
+    s.resetCalls();
+    s.canvas.dispatchEvent(new MouseEvent('mousemove', { clientX: a.x + 1, clientY: a.y + 1 }));
+    const alphaByColor = Object.fromEntries(
+      s.calls('fill').filter(c => Object.values(nodeColors).includes(c.fillStyle)).map(c => [c.fillStyle, c.globalAlpha])
+    );
+    expect(alphaByColor.red).not.toBe(0.3);
+    expect(alphaByColor.blue).not.toBe(0.3);
+    expect(alphaByColor.green).toBe(0.3);
+    expect(alphaByColor.black).toBe(0.3);
   });
 
   it('dims unconnected flows while a node is hovered', () => {

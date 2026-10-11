@@ -43,11 +43,14 @@ function drawRoundedRect(ctx, x, y, w, h, r) {
 
 /**
  * Validates that a data point has the required fields for a Sankey flow.
+ * Self-loops (from === to) are rejected: a Sankey band cannot connect a node
+ * to itself.
  */
 export function isValidFlow(dp) {
   return dp != null
     && typeof dp.from === 'string' && dp.from.length > 0
     && typeof dp.to === 'string' && dp.to.length > 0
+    && dp.from !== dp.to
     && typeof dp.flow === 'number' && dp.flow > 0 && isFinite(dp.flow);
 }
 
@@ -83,6 +86,16 @@ export function assignNodeLevels(data, nodes, nodeConfig) {
   const levels = new Map();
   const visited = new Set();
 
+  // Adjacency lists (in data order) so each node's edges are visited once
+  const targets = new Map();
+  const sources = new Map();
+  for (const flow of data) {
+    if (!targets.has(flow.from)) targets.set(flow.from, []);
+    targets.get(flow.from).push(flow.to);
+    if (!sources.has(flow.to)) sources.set(flow.to, []);
+    sources.get(flow.to).push(flow.from);
+  }
+
   // Pre-pin nodes and seed BFS with their children
   const queue = [];
   if (nodeConfig) {
@@ -90,20 +103,17 @@ export function assignNodeLevels(data, nodes, nodeConfig) {
       if (cfg && cfg.column != null && nodes.has(id)) {
         levels.set(id, cfg.column);
         visited.add(id);
-        for (const flow of data) {
-          if (flow.from === id) {
-            queue.push({ id: flow.to, level: cfg.column + 1 });
-          }
+        for (const to of targets.get(id) || []) {
+          queue.push({ id: to, level: cfg.column + 1 });
         }
       }
     }
   }
 
   // Find root nodes (no incoming edges, not already pinned)
-  const hasIncoming = new Set(data.map(f => f.to));
   const roots = [];
   for (const id of nodes.keys()) {
-    if (!visited.has(id) && !hasIncoming.has(id)) roots.push(id);
+    if (!visited.has(id) && !sources.has(id)) roots.push(id);
   }
 
   // If no roots and no queued items, pick the first unvisited node
@@ -129,9 +139,9 @@ export function assignNodeLevels(data, nodes, nodeConfig) {
     visited.add(id);
     levels.set(id, level);
 
-    for (const flow of data) {
-      if (flow.from === id && !visited.has(flow.to)) {
-        queue.push({ id: flow.to, level: level + 1 });
+    for (const to of targets.get(id) || []) {
+      if (!visited.has(to)) {
+        queue.push({ id: to, level: level + 1 });
       }
     }
   }
@@ -140,9 +150,9 @@ export function assignNodeLevels(data, nodes, nodeConfig) {
   for (const id of nodes.keys()) {
     if (!levels.has(id)) {
       let maxIncomingLevel = -1;
-      for (const flow of data) {
-        if (flow.to === id && levels.has(flow.from)) {
-          maxIncomingLevel = Math.max(maxIncomingLevel, levels.get(flow.from));
+      for (const from of sources.get(id) || []) {
+        if (levels.has(from)) {
+          maxIncomingLevel = Math.max(maxIncomingLevel, levels.get(from));
         }
       }
       levels.set(id, maxIncomingLevel >= 0 ? maxIncomingLevel + 1 : 0);
@@ -628,12 +638,16 @@ export class SankeyController extends DatasetController {
     const nodePadding = dataset.nodePadding ?? defaults.nodePadding;
     const isVertical = orientation === 'vertical';
 
-    // In vertical mode: levels run top-to-bottom, nodes stack left-to-right
-    const levelAxisLength = isVertical ? chartHeight : chartWidth;
-    const nodeAxisLength = isVertical ? chartWidth : chartHeight;
-
     const maxLevel = Math.max(0, ...levels.values());
     const levelCount = maxLevel + 1;
+
+    // In vertical mode: levels run top-to-bottom, nodes stack left-to-right.
+    // Labels drawn outside the first/last level get room reserved on the
+    // level axis so they stay inside the chart area.
+    const margins = this._labelMargins(nodes, nodesByLevel, maxLevel, isVertical, nodeWidth,
+      isVertical ? chartHeight : chartWidth);
+    const levelAxisLength = (isVertical ? chartHeight : chartWidth) - margins.start - margins.end;
+    const nodeAxisLength = isVertical ? chartWidth : chartHeight;
     const levelSpacing = levelCount > 1
       ? (levelAxisLength - nodeWidth) / (levelCount - 1)
       : 0;
@@ -662,7 +676,7 @@ export class SankeyController extends DatasetController {
       const startPos = nodeAxisStart + (nodeAxisLength - totalHeight) / 2;
 
       // Level axis position
-      const levelAxisStart = isVertical ? top : left;
+      const levelAxisStart = (isVertical ? top : left) + margins.start;
       const levelPos = levelCount > 1
         ? levelAxisStart + level * levelSpacing
         : levelAxisStart + (levelAxisLength - nodeWidth) / 2;
@@ -694,55 +708,146 @@ export class SankeyController extends DatasetController {
     return positions;
   }
 
-  _computeFlows(data, nodePositions, dataset, colorMode, orientation) {
-    const outOffsets = new Map();
-    const inOffsets = new Map();
-    for (const id of nodePositions.keys()) {
-      outOffsets.set(id, 0);
-      inOffsets.set(id, 0);
+  /**
+   * Node label options merged over the defaults. Read from the dataset
+   * directly rather than this.options: Chart.js's resolver proxy would call
+   * `formatter` as a scriptable option.
+   */
+  _labelsConfig() {
+    const dataset = this.getDataset();
+    const defaults = SankeyController.defaults.labels;
+    return {
+      ...defaults,
+      ...(dataset.labels || {}),
+      font: {
+        ...defaults.font,
+        ...(dataset.labels?.font || {})
+      }
+    };
+  }
+
+  _labelText(nodeId, node, cfg) {
+    return typeof cfg.formatter === 'function'
+      ? cfg.formatter(nodeId, node || { id: nodeId, incoming: 0, outgoing: 0, value: 0 })
+      : nodeId;
+  }
+
+  /**
+   * Space (in px) that labels of the first and last levels need outside the
+   * nodes, along the level axis. Mirrors the placement rules of _drawNodes.
+   * Each side is capped at a third of the axis.
+   */
+  _labelMargins(nodes, nodesByLevel, maxLevel, isVertical, nodeWidth, axisLength) {
+    const cfg = this._labelsConfig();
+    const margins = { start: 0, end: 0 };
+    if (cfg.display === false) return margins;
+
+    const fontSize = cfg.font.size || 12;
+    const padding = cfg.padding ?? 5;
+    const position = cfg.position || 'auto';
+    const auto = position === 'auto' && maxLevel > 0;
+
+    if (isVertical) {
+      // Text height is what overflows on the vertical level axis
+      const textHeight = fontSize + padding;
+      if (auto) {
+        margins.start = textHeight;
+        margins.end = textHeight;
+      } else if (position !== 'left' && position !== 'right') {
+        margins.start = textHeight;
+      }
+    } else {
+      const ctx = this.chart.ctx;
+      ctx.save();
+      ctx.font = `${fontSize}px ${cfg.font.family || 'sans-serif'}`;
+      const widest = (level) => {
+        let max = 0;
+        for (const id of nodesByLevel.get(level) || []) {
+          max = Math.max(max, ctx.measureText(String(this._labelText(id, nodes.get(id), cfg))).width);
+        }
+        return max;
+      };
+      if (auto || position === 'left') {
+        margins.start = widest(0) + padding;
+      }
+      if (auto || position === 'right') {
+        margins.end = widest(maxLevel) + padding;
+      }
+      if (!auto && position !== 'left' && position !== 'right') {
+        // Centered above the node: only the part wider than the node overflows
+        margins.start = Math.max(0, widest(0) / 2 - nodeWidth / 2);
+        margins.end = Math.max(0, widest(maxLevel) / 2 - nodeWidth / 2);
+      }
+      ctx.restore();
     }
+
+    const cap = axisLength / 3;
+    margins.start = Math.min(margins.start, cap);
+    margins.end = Math.min(margins.end, cap);
+    return margins;
+  }
+
+  _computeFlows(data, nodePositions, dataset, colorMode, orientation) {
     const isVertical = orientation === 'vertical';
+    // Node size along the stacking axis, and the node's center on that axis
+    const extent = pos => (isVertical ? pos.width : pos.height);
+    const center = pos => (isVertical ? pos.x + pos.width / 2 : pos.y + pos.height / 2);
+    // Band thickness of a flow where it meets the given node
+    const thickness = (dp, pos) => (pos.value > 0 ? (dp.flow / pos.value) * extent(pos) : 0);
+
+    const outgoing = new Map();
+    const incoming = new Map();
+    for (let i = 0; i < data.length; i++) {
+      const dp = data[i];
+      if (!isValidFlow(dp) || !nodePositions.has(dp.from) || !nodePositions.has(dp.to)) continue;
+      if (!outgoing.has(dp.from)) outgoing.set(dp.from, []);
+      outgoing.get(dp.from).push(i);
+      if (!incoming.has(dp.to)) incoming.set(dp.to, []);
+      incoming.get(dp.to).push(i);
+    }
+
+    // Stack each node's bands in the order of the nodes at their other end,
+    // so bands never cross each other where they attach to a node.
+    const stack = (byNode, otherEnd) => {
+      const offsets = new Array(data.length);
+      for (const [id, indices] of byNode) {
+        const pos = nodePositions.get(id);
+        indices.sort((a, b) =>
+          center(nodePositions.get(data[a][otherEnd])) - center(nodePositions.get(data[b][otherEnd])) || a - b);
+        let offset = 0;
+        for (const i of indices) {
+          offsets[i] = offset;
+          offset += thickness(data[i], pos);
+        }
+      }
+      return offsets;
+    };
+    const outOffsets = stack(outgoing, 'to');
+    const inOffsets = stack(incoming, 'from');
 
     const flows = new Array(data.length).fill(null);
     for (let i = 0; i < data.length; i++) {
+      if (outOffsets[i] === undefined) continue;
       const dp = data[i];
-      if (!isValidFlow(dp)) continue;
-
       const fromPos = nodePositions.get(dp.from);
       const toPos = nodePositions.get(dp.to);
-      if (!fromPos || !toPos) continue;
-
-      let sourceHeight, targetHeight;
-      if (isVertical) {
-        // In vertical mode, flow band width is along x-axis (fromPos.width holds the node's "size")
-        sourceHeight = fromPos.value > 0
-          ? (dp.flow / fromPos.value) * fromPos.width : 0;
-        targetHeight = toPos.value > 0
-          ? (dp.flow / toPos.value) * toPos.width : 0;
-      } else {
-        sourceHeight = fromPos.value > 0
-          ? (dp.flow / fromPos.value) * fromPos.height : 0;
-        targetHeight = toPos.value > 0
-          ? (dp.flow / toPos.value) * toPos.height : 0;
-      }
+      const sourceHeight = thickness(dp, fromPos);
+      const targetHeight = thickness(dp, toPos);
 
       let flowX, flowY, flowX2, flowY2;
       if (isVertical) {
         // Flow exits bottom of source, enters top of target
-        flowX = fromPos.x + outOffsets.get(dp.from) + sourceHeight / 2;
+        flowX = fromPos.x + outOffsets[i] + sourceHeight / 2;
         flowY = fromPos.y + fromPos.height; // bottom edge
-        flowX2 = toPos.x + inOffsets.get(dp.to) + targetHeight / 2;
+        flowX2 = toPos.x + inOffsets[i] + targetHeight / 2;
         flowY2 = toPos.y; // top edge
       } else {
         // Flow exits right of source, enters left of target
         flowX = fromPos.x + fromPos.width; // right edge
-        flowY = fromPos.y + outOffsets.get(dp.from) + sourceHeight / 2;
+        flowY = fromPos.y + outOffsets[i] + sourceHeight / 2;
         flowX2 = toPos.x; // left edge
-        flowY2 = toPos.y + inOffsets.get(dp.to) + targetHeight / 2;
+        flowY2 = toPos.y + inOffsets[i] + targetHeight / 2;
       }
-
-      outOffsets.set(dp.from, outOffsets.get(dp.from) + sourceHeight);
-      inOffsets.set(dp.to, inOffsets.get(dp.to) + targetHeight);
 
       // Resolve color based on colorMode
       let baseColor = dp.color || dataset.color || defaultColors[i % defaultColors.length];
@@ -872,16 +977,7 @@ export class SankeyController extends DatasetController {
     const nodeBorderColor = dataset.nodeBorderColor ?? defaults.nodeBorderColor;
     const nodeBorderWidth = dataset.nodeBorderWidth ?? defaults.nodeBorderWidth;
     const nodeBorderRadius = dataset.nodeBorderRadius ?? defaults.nodeBorderRadius;
-    // Merge defaults with dataset config directly (avoid this.options which uses
-    // Chart.js's resolver proxy that calls functions as scriptable options)
-    const labelsCfg = {
-      ...defaults.labels,
-      ...(dataset.labels || {}),
-      font: {
-        ...defaults.labels.font,
-        ...(dataset.labels?.font || {})
-      }
-    };
+    const labelsCfg = this._labelsConfig();
 
     const levels = this._levels || new Map();
     const maxLevel = this._maxLevel || 0;
@@ -889,24 +985,26 @@ export class SankeyController extends DatasetController {
     const resolvedColors = this._resolvedNodeColors || new Map();
     const orientation = this._orientation || 'horizontal';
     const isVertical = orientation === 'vertical';
-    const formatter = dataset.labels?.formatter ?? defaults.labels.formatter;
 
     const hoveredNode = this._hoveredNode;
+
+    // Nodes directly connected to the hovered node stay fully opaque
+    let connected = null;
+    if (hoveredNode) {
+      connected = new Set();
+      for (const f of dataset.data || []) {
+        if (!f) continue;
+        if (f.from === hoveredNode) connected.add(f.to);
+        if (f.to === hoveredNode) connected.add(f.from);
+      }
+    }
 
     for (const [nodeId, pos] of this._nodePositions) {
       ctx.save();
 
       // Dim unrelated nodes when a node is hovered
-      if (hoveredNode && nodeId !== hoveredNode) {
-        // Check if this node is directly connected to the hovered node
-        const dataset2 = dataset.data || [];
-        const isConnected = dataset2.some(
-          f => (f.from === hoveredNode && f.to === nodeId)
-            || (f.to === hoveredNode && f.from === nodeId)
-        );
-        if (!isConnected) {
-          ctx.globalAlpha = 0.3;
-        }
+      if (connected && nodeId !== hoveredNode && !connected.has(nodeId)) {
+        ctx.globalAlpha = 0.3;
       }
 
       // Node fill
@@ -945,9 +1043,7 @@ export class SankeyController extends DatasetController {
         const position = labelsCfg.position || 'auto';
         const node = nodes.get(nodeId);
 
-        const labelText = typeof formatter === 'function'
-          ? formatter(nodeId, node || { id: nodeId, incoming: 0, outgoing: 0, value: 0 })
-          : nodeId;
+        const labelText = this._labelText(nodeId, node, labelsCfg);
 
         ctx.fillStyle = labelsCfg.color || 'rgba(0, 0, 0, 1)';
         ctx.font = `${fontSize}px ${fontFamily}`;

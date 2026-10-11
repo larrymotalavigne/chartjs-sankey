@@ -6,13 +6,20 @@ Chart.register(SankeyController, FlowElement);
 /**
  * Minimal CanvasRenderingContext2D stand-in for jsdom (which has no canvas
  * implementation). Every method is a no-op that records its call; property
- * writes (fillStyle, font, ...) are stored. measureText approximates widths
+ * writes (fillStyle, font, ...) are stored and save()/restore() keep a state
+ * stack like the real context. measureText approximates widths
  * so Chart.js's layout code gets deterministic numbers.
  */
 function createMockContext(canvas) {
   const calls = [];
-  const state = { canvas };
+  const state = { canvas, globalAlpha: 1 };
+  const saved = [];
   const special = {
+    save: () => saved.push({ ...state }),
+    restore: () => {
+      const prev = saved.pop();
+      if (prev) Object.assign(state, prev);
+    },
     measureText: (text) => ({
       width: String(text).length * 6,
       actualBoundingBoxAscent: 8,
@@ -34,7 +41,7 @@ function createMockContext(canvas) {
       if (prop in target) return target[prop];
       if (typeof prop === 'symbol') return undefined;
       return (...args) => {
-        calls.push({ name: prop, args, fillStyle: target.fillStyle, font: target.font, globalAlpha: target.globalAlpha });
+        calls.push({ name: prop, args, fillStyle: target.fillStyle, font: target.font, globalAlpha: target.globalAlpha, textAlign: target.textAlign });
         return special[prop] ? special[prop](...args) : undefined;
       };
     },

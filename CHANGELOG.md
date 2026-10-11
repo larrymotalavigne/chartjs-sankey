@@ -7,7 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Node labels no longer overflow the canvas: the space needed by the labels of
+  the first and last levels is measured and reserved automatically (capped at
+  a third of the chart on each side). A manual `layout.padding` added to work
+  around clipped labels can be removed.
+- At each node, flow bands are stacked in the order of the nodes at their other
+  end instead of data order, removing avoidable crossings where bands attach.
+- Self-loops (`from === to`) are ignored: `isValidFlow()` now returns `false`
+  for them. They used to be drawn as a broken band across the node.
+- Faster layout on large graphs (`assignNodeLevels` builds adjacency lists once;
+  about 10x faster on 500 nodes / 1,800 flows) and on node hover (connected
+  nodes computed once per frame instead of once per node).
+
 ### Fixed
+- Hovering a node crashed when the dataset contained a `null` data point.
 - Charts failed with `"linear" is not a registered scale` when Chart.js was
   imported without `chart.js/auto` (tree-shaken setups, including the README's
   ES module example). The plugin now registers `LinearScale` along with its

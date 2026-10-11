@@ -131,15 +131,21 @@ Les changements cassants sont regroupés ici, une seule fois.
       reste préfixé `_` est privé.
 
 ### Jalon D — Robustesse du rendu (≈ 1–2 semaines) → `4.0.0-beta.2`
-- [ ] **P5** Mesure des labels (`ctx.measureText`) et réservation automatique
+- [x] **P5** Mesure des labels (`ctx.measureText`) et réservation automatique
       de la marge nécessaire (ou option `labels.overflow: 'auto' | 'clip'`).
+      *Fait sur l'axe des niveaux (premier/dernier niveau). Reste : débordement
+      sur l'axe des nœuds (labels au-dessus d'un nœud collé au bord).*
 - [ ] **P6** Gestion explicite des cycles : rejeter les boucles `from === to`
       avec un avertissement, dessiner les flux retour en arc (ou les exclure
       via une option `cycles: 'ignore' | 'arc'`) ; `inRange` cohérent.
-- [ ] **P11** Tri des flux sortants/entrants par position du nœud
+      *En partie : les boucles `from === to` sont ignorées. Reste : les flux
+      retour des cycles plus longs.*
+- [x] **P11** Tri des flux sortants/entrants par position du nœud
       opposé (comme d3-sankey) pour supprimer les croisements aux ports.
-- [ ] **P12** Index d'adjacence construit une fois par `update` ; connexité de
+- [x] **P12** Index d'adjacence construit une fois par `update` ; connexité de
       survol pré-calculée ; benchmark sur 500 nœuds / 2 000 flux.
+      *Fait : `assignNodeLevels` ~10x plus rapide (17 ms → 1,6 ms sur
+      500 nœuds / 1 800 flux), connexité calculée une fois par frame.*
 - [ ] Accessibilité minimale : texte alternatif généré (`aria-label` /
       contenu de repli listant les flux), contraste des couleurs par défaut.
 - [ ] Support du `devicePixelRatio` et du redimensionnement vérifié par les
