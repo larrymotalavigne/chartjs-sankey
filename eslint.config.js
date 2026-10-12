@@ -23,6 +23,14 @@ export default [
     }
   },
   {
+    files: ['scripts/**/*.mjs'],
+    languageOptions: {
+      ecmaVersion: 2022,
+      sourceType: 'module',
+      globals: globals.node
+    }
+  },
+  {
     files: ['scripts/**/*.cjs'],
     languageOptions: {
       ecmaVersion: 2022,

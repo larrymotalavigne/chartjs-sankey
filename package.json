@@ -1,6 +1,6 @@
 {
   "name": "@larrym/chartjs-plugin-sankey",
-  "version": "4.0.0-beta.1",
+  "version": "4.0.0",
   "description": "Chart.js plugin for creating Sankey diagrams",
   "type": "module",
   "main": "./dist/chartjs-plugin-sankey.cjs",
@@ -34,7 +34,8 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "test:types": "tsc -p test/types",
-    "test:package": "node scripts/smoke-test.cjs && publint --strict && attw --pack ."
+    "test:package": "node scripts/smoke-test.cjs && publint --strict && attw --pack .",
+    "test:visual": "node scripts/visual-test.mjs"
   },
   "keywords": [
     "chart.js",
@@ -63,6 +64,9 @@
     "eslint": "^9.39.5",
     "globals": "^17.13.0",
     "jsdom": "^26.1.0",
+    "pixelmatch": "^7.2.0",
+    "playwright": "^1.56.1",
+    "pngjs": "^7.0.0",
     "publint": "^0.3.25",
     "rollup": "^4.9.0",
     "typescript": "^5.9.3",

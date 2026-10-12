@@ -47,3 +47,35 @@ jobs:
       with:
         name: dist
         path: dist/
+
+  visual:
+    # Pixel comparison of reference diagrams in headless Chromium
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Use Node.js 22.x
+      uses: actions/setup-node@v4
+      with:
+        node-version: 22.x
+        cache: npm
+
+    - name: Install dependencies
+      run: npm ci
+
+    - name: Install Chromium
+      run: npx playwright install --with-deps chromium
+
+    - name: Build
+      run: npm run build
+
+    - name: Visual regression tests
+      run: npm run test:visual
+
+    - name: Upload visual differences
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: visual-diff
+        path: test/visual/__diff__/
