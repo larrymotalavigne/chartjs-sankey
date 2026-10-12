@@ -89,6 +89,6 @@ Chart.js calls `_destroy()` (not `destroy()`) on dataset controllers — put tea
 ## CI/CD
 
 - **ci.yml**: lint, build, tests, type tests and package checks on Node 22/24/26, uploads dist/ artifact on Node 22; separate `visual` job runs `test:visual` (uploads `visual-diff` artifact on failure)
-- **publish.yml**: on GitHub release → same checks, then npm publish with `--provenance` attestation; pre-release versions (containing `-`) are published under the `next` dist-tag
+- **publish.yml**: on push to `main` (also GitHub release / manual dispatch) → if `package.json`'s version is not on npm yet: same checks, npm publish with `--provenance` (pre-releases containing `-` under the `next` dist-tag), then creates the `v<version>` tag and GitHub release from the CHANGELOG section. Releasing = bump the version + CHANGELOG entry and merge to `main`.
 
 See `ROADMAP.md` for the plan towards a stable release and `CHANGELOG.md` for release notes.
