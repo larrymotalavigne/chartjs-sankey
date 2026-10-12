@@ -145,6 +145,25 @@ describe('SankeyController label space', () => {
     expect(p.C.y + p.C.height).toBe(H - (14 + PAD));
   });
 
+  it('keeps labels of middle levels inside the canvas (above the nodes)', () => {
+    // Fan-in/fan-out through B: B fills the full height, its label goes above
+    const s = sankey({ data: [
+      { from: 'A1', to: 'B', flow: 10 }, { from: 'A2', to: 'B', flow: 10 },
+      { from: 'B', to: 'C1', flow: 10 }, { from: 'B', to: 'C2', flow: 10 }
+    ] });
+    const b = s.calls('fillText').find(c => c.args[0] === 'B');
+    expect(b.textAlign).toBe('center');
+    // textBaseline 'bottom' at y: the text spans [y - 12, y]
+    expect(b.args[2] - 12).toBeGreaterThanOrEqual(0);
+  });
+
+  it('keeps labels of middle levels inside the canvas (left of the nodes, vertical)', () => {
+    const s = sankey({ data: chain, orientation: 'vertical', labels: { formatter: (id) => `${id}-label` } });
+    const b = s.calls('fillText').find(c => c.args[0] === 'B-label');
+    expect(b.textAlign).toBe('right');
+    expect(b.args[1] - 'B-label'.length * CHAR).toBeGreaterThanOrEqual(0);
+  });
+
   it('caps the reserved space at a third of the axis', () => {
     const s = sankey({ data: chain, labels: { formatter: (id) => id.repeat(200) } });
     expect(positions(s).A.x).toBeCloseTo(W / 3);
@@ -153,6 +172,101 @@ describe('SankeyController label space', () => {
   it('reserves nothing when labels are hidden', () => {
     const s = sankey({ data: chain, labels: { display: false } });
     expect(positions(s).A.x).toBe(0);
+  });
+});
+
+describe('SankeyController loops (cycles)', () => {
+  const cycle = [
+    { from: 'A', to: 'B', flow: 10 },
+    { from: 'B', to: 'C', flow: 10 },
+    { from: 'C', to: 'A', flow: 4 },
+    { from: 'B', to: 'D', flow: 3 }
+  ];
+
+  function loopGeometry(el) {
+    const w1 = el.height / 2;
+    const w2 = el.height2 / 2;
+    const wm = (w1 + w2) / 2;
+    return { w1, w2, wm };
+  }
+
+  it('routes backward flows through a lane below the nodes (horizontal)', () => {
+    const s = sankey({ data: cycle });
+    const p = positions(s);
+    const [ab, bc, ca, bd] = s.elements;
+    expect([ab.loop, bc.loop, ca.loop, bd.loop]).toEqual([false, false, true, false]);
+    const nodesBottom = Math.max(...Object.values(p).map(n => n.y + n.height));
+    const { wm } = loopGeometry(ca);
+    expect(ca.loopLane - wm).toBeGreaterThan(nodesBottom);
+    expect(ca.loopLane + wm).toBeLessThanOrEqual(H + 0.001);
+    // Leaves C to the right, comes back into A from the left
+    expect(ca.x).toBe(p.C.x + p.C.width);
+    expect(ca.x2).toBe(p.A.x);
+    expect(ca.loopStart).toBeGreaterThan(ca.x);
+    expect(ca.loopEnd).toBeLessThan(ca.x2);
+  });
+
+  it('keeps loops inside the canvas', () => {
+    const s = sankey({ data: cycle });
+    const ca = s.elements[2];
+    const { w1, w2 } = loopGeometry(ca);
+    expect(ca.loopStart + w1).toBeLessThanOrEqual(W + 0.001);
+    expect(ca.loopEnd - w2).toBeGreaterThanOrEqual(-0.001);
+  });
+
+  it('stacks loops last at their ports', () => {
+    const s = sankey({ data: [...cycle, { from: 'C', to: 'E', flow: 6 }, { from: 'Z', to: 'A', flow: 2 }] });
+    const ca = s.elements[2];
+    const ce = s.elements[4];
+    const za = s.elements[5];
+    // C -> A (loop) leaves C below C -> E ...
+    expect(ca.y).toBeGreaterThan(ce.y);
+    // ... and enters A below Z -> A
+    expect(ca.y2).toBeGreaterThan(za.y2);
+  });
+
+  it('gives each loop its own lane', () => {
+    const s = sankey({ data: [...cycle, { from: 'C', to: 'B', flow: 2 }] });
+    const loops = s.elements.filter(e => e.loop);
+    expect(loops).toHaveLength(2);
+    const [first, second] = loops.sort((a, b) => a.loopLane - b.loopLane);
+    expect(second.loopLane - loopGeometry(second).wm).toBeGreaterThan(first.loopLane + loopGeometry(first).wm);
+  });
+
+  it('routes loops to the right of the nodes in vertical mode', () => {
+    const s = sankey({ data: cycle, orientation: 'vertical' });
+    const p = positions(s);
+    const ca = s.elements[2];
+    const nodesRight = Math.max(...Object.values(p).map(n => n.x + n.width));
+    expect(ca.loop).toBe(true);
+    expect(ca.loopLane - loopGeometry(ca).wm).toBeGreaterThan(nodesRight);
+    expect(ca.y).toBe(p.C.y + p.C.height);
+    expect(ca.loopStart).toBeGreaterThan(ca.y);
+    expect(ca.loopEnd).toBeLessThan(ca.y2);
+  });
+
+  it('treats flows into the same level as loops', () => {
+    const s = sankey({ data: [{ from: 'A', to: 'B', flow: 5 }], nodes: { B: { column: 0 } } });
+    expect(s.elements[0].loop).toBe(true);
+  });
+
+  it('hit-tests and centers tooltips on the lane', async () => {
+    const onFlowClick = vi.fn();
+    const s = sankey({ data: cycle, onFlowClick });
+    const ca = s.elements[2];
+    const center = ca.getCenterPoint();
+    expect(center.y).toBe(ca.loopLane);
+    expect(center.x).toBeCloseTo((ca.loopStart + ca.loopEnd) / 2);
+    expect(ca.inRange(center.x, center.y)).toBe(true);
+    // Just above the lane, between the nodes: not on the loop
+    expect(ca.inRange(center.x, ca.loopLane - loopGeometry(ca).wm - 3)).toBe(false);
+    await s.dispatch('click', Math.round(center.x), Math.round(center.y));
+    expect(onFlowClick).toHaveBeenCalledWith(cycle[2], expect.anything());
+  });
+
+  it('draws loops with rounded corners', () => {
+    const s = sankey({ data: cycle });
+    expect(s.calls('arcTo').length).toBeGreaterThan(0);
   });
 });
 

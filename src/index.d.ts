@@ -156,6 +156,14 @@ export class FlowElement extends Element {
   hoverColor: string | null;
   orientation: 'horizontal' | 'vertical';
   active: boolean;
+  /** True for backward flows (cycles), drawn around the nodes */
+  loop: boolean;
+  /** Level-axis coordinate where a loop turns away from its source */
+  loopStart: number;
+  /** Level-axis coordinate where a loop turns back into its target */
+  loopEnd: number;
+  /** Node-axis coordinate of the lane a loop runs along */
+  loopLane: number;
 
   draw(ctx: CanvasRenderingContext2D): void;
   inRange(mouseX: number, mouseY: number): boolean;

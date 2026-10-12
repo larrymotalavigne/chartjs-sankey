@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Overview
 
-**chartjs-sankey** is a Chart.js 4.x plugin for rendering Sankey diagrams, published on npm as **`@larrym/chartjs-plugin-sankey`** (current version **4.0.0-beta.1** per `package.json`; 3.0.0 is the latest stable on npm). It registers a custom `'sankey'` chart type with three components: `SankeyController` (layout + rendering), `FlowElement` (Chart.js element for individual flow bands) and `SankeyPlugin` (node hover + click callbacks through Chart.js events). Importing the package registers them plus Chart.js's `LinearScale`. The public API is frozen for 4.x: everything exported and typed is public, `_`-prefixed members are private. Breaking changes go in `MIGRATION.md`.
+**chartjs-sankey** is a Chart.js 4.x plugin for rendering Sankey diagrams, published on npm as **`@larrym/chartjs-plugin-sankey`** (current version **4.0.0** per `package.json`). It registers a custom `'sankey'` chart type with three components: `SankeyController` (layout + rendering), `FlowElement` (Chart.js element for individual flow bands) and `SankeyPlugin` (node hover + click callbacks through Chart.js events). Importing the package registers them plus Chart.js's `LinearScale`. The public API is frozen for 4.x: everything exported and typed is public, `_`-prefixed members are private. Breaking changes go in `MIGRATION.md`.
 
 ## Commands
 
@@ -16,6 +16,7 @@ npm test             # Vitest (single run)
 npm run test:watch   # Vitest (watch mode)
 npm run test:types   # tsc on test/types/ fixtures (needs a build)
 npm run test:package # scripts/smoke-test.cjs + publint + attw (needs a build)
+npm run test:visual  # Playwright pixel comparison of test/visual/fixtures.js (needs a build; -- --update to accept changes)
 ```
 
 No formatter configured.
@@ -49,8 +50,9 @@ Internal helpers: `withAlpha` (uses `color` from `chart.js/helpers`), `drawRound
   - Supports `orientation: 'horizontal' | 'vertical'`
   - `_positionNodes()` — orientation-aware layout with global proportional scaling
   - `_resolveNodeColors()` — `nodeColors[id]` → `nodeColor` (string or `(id, node)`) → `NODE_PALETTE`
+  - Loops: flows with `level(to) <= level(from)` are loops. `updateElements()` flags them, `_positionNodes()` reserves a lane per loop after the nodes on the node axis (`_loopLayout`) and room on the level axis for the turns, `_computeFlows()` stacks them last at their ports and sets `loop`, `loopStart`, `loopEnd`, `loopLane` on the element
   - `_computeFlows()` — bands stacked per node in the order of the opposite node (no crossings at ports), tapering; flow color = `dp.color` → `color` → node color (per `colorMode`) at `FLOW_ALPHA`
-  - `_labelSide()` / `_labelMargins()` — label placement and the space reserved for outer labels
+  - `_labelSide()` / `_labelMargins()` / `_nodeAxisLabelMargins()` — label placement and the space reserved for labels on the level axis (outer levels) and on the node axis (labels above/below or left/right of nodes)
   - `_drawNodes()` — rounded rects, configurable colors/borders, label formatter
   - `_drawFlowLabels()` — optional value labels on flow bands
   - `draw()` — renders flows (with hover dim/highlight), flow labels, then nodes on top; hovered node read from `chart.$sankey.hovered` (`{ datasetIndex, nodeId }`)
@@ -59,7 +61,7 @@ Internal helpers: `withAlpha` (uses `color` from `chart.js/helpers`), `drawRound
 - **`SankeyPlugin`** (id `sankeyInteraction`) — `afterEvent` hook: tracks the hovered node in `chart.$sankey` (sets `args.changed` to re-render) and dispatches `onNodeClick` (checked first, nodes are on top) / `onFlowClick` with the native event. No DOM listeners of our own.
 
 - **`FlowElement`** extends `Element`:
-  - `draw()` — bezier band with tapering, gradient fill, hover highlight
+  - `draw()` — bezier band with tapering, gradient fill, hover highlight; loops are traced with `loopCenterline()` + `traceBand()` (axis-aligned centerline, rounded corners)
   - `inRange()` — orientation-aware hit testing
   - `getCenterPoint()`/`tooltipPosition()` — tooltip integration
 
@@ -78,13 +80,15 @@ Listed in `OPTION_KEYS` (src/index.js) and documented in README.md: `orientation
 - `test/types/usage.ts` — compile-only checks of the shipped declarations (`npm run test:types`).
 - `scripts/smoke-test.cjs` — loads the built package via `require`, `import` and the UMD builds.
 
-Coverage thresholds live in `vitest.config.js` (`npm run test:coverage`). Pixel-level rendering is not tested yet (no visual regression suite).
+- `scripts/visual-test.mjs` + `test/visual/fixtures.js` — visual regression: fixtures rendered with the UMD build in headless Chromium (Playwright, pinned to the preinstalled browser build) and compared with `test/visual/__snapshots__/*.png` (pixelmatch, per-pixel threshold 0.02). Diffs go to `test/visual/__diff__/` (gitignored). Labels are hidden in most fixtures because text depends on installed fonts. After an intended rendering change, check the diff images, then run `npm run test:visual -- --update` and commit the new snapshots.
+
+Coverage thresholds live in `vitest.config.js` (`npm run test:coverage`).
 
 Chart.js calls `_destroy()` (not `destroy()`) on dataset controllers — put teardown there. Chart.js throttles DOM events to animation frames: use the helper's async `dispatch()` in event tests.
 
 ## CI/CD
 
-- **ci.yml**: lint, build, tests, type tests and package checks on Node 22/24/26, uploads dist/ artifact on Node 22
+- **ci.yml**: lint, build, tests, type tests and package checks on Node 22/24/26, uploads dist/ artifact on Node 22; separate `visual` job runs `test:visual` (uploads `visual-diff` artifact on failure)
 - **publish.yml**: on GitHub release → same checks, then npm publish with `--provenance` attestation; pre-release versions (containing `-`) are published under the `next` dist-tag
 
 See `ROADMAP.md` for the plan towards a stable release and `CHANGELOG.md` for release notes.

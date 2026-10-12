@@ -220,8 +220,102 @@ export function reorderNodes(nodesByLevel, data) {
 }
 
 /**
+ * Centerline of a loop (backward) flow, as six points with the band's half
+ * width at each point. The band leaves the source like any flow, turns
+ * outward at `loopStart`, runs along its lane (`loopLane`, outside the
+ * nodes), comes back at `loopEnd` and enters the target like any flow.
+ * Coordinates are on the level axis (L) and node axis (N), then mapped to x/y.
+ */
+function loopCenterline(el) {
+  const vertical = el.orientation === 'vertical';
+  const toXY = (l, n) => (vertical ? { x: n, y: l } : { x: l, y: n });
+  const ls = vertical ? el.y : el.x;
+  const ns = vertical ? el.x : el.y;
+  const lt = vertical ? el.y2 : el.x2;
+  const nt = vertical ? el.x2 : el.y2;
+  const h1 = (el.height || 0) / 2;
+  const h2 = (el.height2 != null ? el.height2 : el.height || 0) / 2;
+  const hm = (h1 + h2) / 2;
+  return {
+    points: [
+      toXY(ls, ns),
+      toXY(el.loopStart, ns),
+      toXY(el.loopStart, el.loopLane),
+      toXY(el.loopEnd, el.loopLane),
+      toXY(el.loopEnd, nt),
+      toXY(lt, nt)
+    ],
+    halfWidths: [h1, h1, hm, hm, h2, h2]
+  };
+}
+
+/**
+ * Trace the outline of a band following an axis-aligned centerline, with
+ * rounded corners. Each centerline point is offset to both sides by its half
+ * width; corners get a radius of `radius` (+/- the half width on the
+ * outer/inner side).
+ */
+function traceBand(ctx, points, halfWidths, radius) {
+  const n = points.length;
+  const dir = (a, b) => {
+    const dx = Math.sign(b.x - a.x);
+    const dy = Math.sign(b.y - a.y);
+    return { dx, dy };
+  };
+  const left = [];
+  const right = [];
+  for (let i = 0; i < n; i++) {
+    const p = points[i];
+    const w = halfWidths[i];
+    const dIn = i > 0 ? dir(points[i - 1], p) : null;
+    const dOut = i < n - 1 ? dir(p, points[i + 1]) : null;
+    // Left normal of a direction (screen coordinates, y down) is (dy, -dx)
+    let lx = 0;
+    let ly = 0;
+    for (const d of [dIn, dOut]) {
+      if (!d) continue;
+      if (d.dx === 0 && d.dy === 0) continue;
+      if (d.dx !== 0) ly = d.dx > 0 ? -1 : 1;
+      if (d.dy !== 0) lx = d.dy > 0 ? 1 : -1;
+    }
+    left.push({ x: p.x + lx * w, y: p.y + ly * w });
+    right.push({ x: p.x - lx * w, y: p.y - ly * w });
+    // Corner radius: the side a corner turns towards is the inner side
+    let rLeft = 0;
+    let rRight = 0;
+    if (dIn && dOut && (dIn.dx !== dOut.dx || dIn.dy !== dOut.dy)) {
+      const cross = dIn.dx * dOut.dy - dIn.dy * dOut.dx; // > 0: turns clockwise (right)
+      rLeft = cross > 0 ? radius + w : Math.max(0, radius - w);
+      rRight = cross > 0 ? Math.max(0, radius - w) : radius + w;
+    }
+    left[i].r = rLeft;
+    right[i].r = rRight;
+  }
+  const outline = left.concat(right.reverse());
+  const len = (a, b) => Math.hypot(b.x - a.x, b.y - a.y);
+  ctx.moveTo(outline[0].x, outline[0].y);
+  for (let i = 1; i < outline.length - 1; i++) {
+    const prev = outline[i - 1];
+    const cur = outline[i];
+    const next = outline[i + 1];
+    const r = Math.min(cur.r, len(prev, cur) / 2, len(cur, next) / 2);
+    if (r > 0) ctx.arcTo(cur.x, cur.y, next.x, next.y, r);
+    else ctx.lineTo(cur.x, cur.y);
+  }
+  ctx.lineTo(outline[outline.length - 1].x, outline[outline.length - 1].y);
+  ctx.closePath();
+}
+
+/** Distance a loop flow runs past a node before turning (px). */
+const LOOP_EXTENT = 16;
+/** Extra extent per additional loop, so nested loops do not overlap (px). */
+const LOOP_STEP = 4;
+
+/**
  * Flow element for Sankey diagrams.
  * Renders as a bezier band connecting two nodes, with tapering support.
+ * Backward flows (`loop: true`) are drawn as a band that goes around the
+ * nodes through a lane outside the diagram.
  */
 export class FlowElement extends Element {
   draw(ctx) {
@@ -264,7 +358,10 @@ export class FlowElement extends Element {
     }
 
     ctx.beginPath();
-    if (isVertical) {
+    if (this.loop) {
+      const { points, halfWidths } = loopCenterline(this);
+      traceBand(ctx, points, halfWidths, LOOP_EXTENT / 2);
+    } else if (isVertical) {
       // Vertical: flow goes top-to-bottom, band width is horizontal
       const midY = (y + y2) / 2;
       ctx.moveTo(x - h1, y);
@@ -292,6 +389,21 @@ export class FlowElement extends Element {
     const h1 = height || 0;
     const h2 = height2 != null ? height2 : h1;
 
+    if (this.loop) {
+      // Hit test each straight segment of the loop's centerline
+      const { points, halfWidths } = loopCenterline(this);
+      for (let i = 0; i < points.length - 1; i++) {
+        const a = points[i];
+        const b = points[i + 1];
+        const w = Math.max(halfWidths[i], halfWidths[i + 1]);
+        if (mouseX >= Math.min(a.x, b.x) - w && mouseX <= Math.max(a.x, b.x) + w
+            && mouseY >= Math.min(a.y, b.y) - w && mouseY <= Math.max(a.y, b.y) + w) {
+          return true;
+        }
+      }
+      return false;
+    }
+
     if (orientation === 'vertical') {
       // Vertical: flow runs along Y axis, band width along X
       if (y2 === y) return false;
@@ -311,6 +423,11 @@ export class FlowElement extends Element {
   }
 
   getCenterPoint() {
+    if (this.loop) {
+      // Middle of the lane segment
+      const { points } = loopCenterline(this);
+      return { x: (points[2].x + points[3].x) / 2, y: (points[2].y + points[3].y) / 2 };
+    }
     return {
       x: ((this.x || 0) + (this.x2 || 0)) / 2,
       y: ((this.y || 0) + (this.y2 || 0)) / 2
@@ -371,7 +488,7 @@ export class SankeyController extends DatasetController {
     animations: {
       numbers: {
         type: 'number',
-        properties: ['x', 'y', 'x2', 'y2', 'height', 'height2']
+        properties: ['x', 'y', 'x2', 'y2', 'height', 'height2', 'loopStart', 'loopEnd', 'loopLane']
       },
       colors: {
         type: 'color',
@@ -525,10 +642,26 @@ export class SankeyController extends DatasetController {
     this._maxLevel = Math.max(0, ...levels.values());
     this._resolvedNodeColors = this._resolveNodeColors(nodes, opts);
 
-    const nodePositions = this._positionNodes(nodes, levels, nodesByLevel, orientation);
+    // Backward flows (cycles, or flows into the same or an earlier level)
+    // are routed around the diagram; reserve a lane for each.
+    const isLoop = data.map(dp => isValidFlow(dp) && levels.get(dp.to) <= levels.get(dp.from));
+    // Loops leaving the last level / entering the first one turn outside the
+    // diagram: track the largest of each to reserve room for them.
+    const maxLevel = this._maxLevel;
+    const loops = { count: 0, value: 0, maxAtStart: 0, maxAtEnd: 0 };
+    isLoop.forEach((loop, i) => {
+      if (!loop) return;
+      const dp = data[i];
+      loops.count++;
+      loops.value += dp.flow;
+      if (levels.get(dp.to) === 0) loops.maxAtStart = Math.max(loops.maxAtStart, dp.flow);
+      if (levels.get(dp.from) === maxLevel) loops.maxAtEnd = Math.max(loops.maxAtEnd, dp.flow);
+    });
+
+    const nodePositions = this._positionNodes(nodes, levels, nodesByLevel, orientation, loops);
     this._nodePositions = nodePositions;
 
-    const flows = this._computeFlows(data, nodePositions, opts);
+    const flows = this._computeFlows(data, nodePositions, opts, isLoop);
 
     for (let i = start; i < start + count; i++) {
       const flow = flows[i];
@@ -547,7 +680,11 @@ export class SankeyController extends DatasetController {
           hoverColor: flow.hoverColor,
           orientation,
           from: flow.from,
-          to: flow.to
+          to: flow.to,
+          loop: flow.loop,
+          loopStart: flow.loopStart,
+          loopEnd: flow.loopEnd,
+          loopLane: flow.loopLane
         }, mode);
       }
     }
@@ -570,7 +707,7 @@ export class SankeyController extends DatasetController {
     return colors;
   }
 
-  _positionNodes(nodes, levels, nodesByLevel, orientation) {
+  _positionNodes(nodes, levels, nodesByLevel, orientation, loops = { count: 0, value: 0, maxAtStart: 0, maxAtEnd: 0 }) {
     const { chartArea } = this.chart;
     const { left, right, top, bottom } = chartArea;
     const chartWidth = right - left;
@@ -583,28 +720,52 @@ export class SankeyController extends DatasetController {
     const levelCount = maxLevel + 1;
 
     // In vertical mode: levels run top-to-bottom, nodes stack left-to-right.
-    // Labels drawn outside the first/last level get room reserved on the
-    // level axis so they stay inside the chart area.
-    const margins = this._labelMargins(nodes, nodesByLevel, maxLevel, isVertical,
-      isVertical ? chartHeight : chartWidth);
-    const levelAxisLength = (isVertical ? chartHeight : chartWidth) - margins.start - margins.end;
-    const nodeAxisLength = isVertical ? chartWidth : chartHeight;
-    const levelSpacing = levelCount > 1
-      ? (levelAxisLength - nodeWidth) / (levelCount - 1)
-      : 0;
+    // Labels drawn beside the nodes on the node axis (above/below, or
+    // left/right when vertical) get room reserved there.
+    const nodeMargins = this._nodeAxisLabelMargins(nodes, nodesByLevel, maxLevel, isVertical,
+      isVertical ? chartWidth : chartHeight);
+    const nodeAxisOrigin = (isVertical ? left : top) + nodeMargins.start;
+    const nodeAxisLength = (isVertical ? chartWidth : chartHeight) - nodeMargins.start - nodeMargins.end;
+    // Loop lanes sit after the nodes on the node axis (below, or right when vertical)
+    const laneGap = Math.max(2, nodePadding / 2);
+    const laneGaps = loops.count * laneGap;
 
-    // Find global scale that fits the tightest level
+    // Find global scale that fits the tightest level (plus the loop lanes)
     let scale = Infinity;
     for (const nodeIds of nodesByLevel.values()) {
       let totalValue = 0;
       for (const id of nodeIds) totalValue += nodes.get(id).value;
       const padding = Math.max(0, nodeIds.length - 1) * nodePadding;
-      const available = nodeAxisLength - padding;
+      const available = nodeAxisLength - padding - laneGaps;
       if (totalValue > 0 && available > 0) {
-        scale = Math.min(scale, available / totalValue);
+        scale = Math.min(scale, available / (totalValue + loops.value));
       }
     }
     if (!isFinite(scale) || scale <= 0) scale = 1;
+
+    // Labels drawn outside the first/last level get room reserved on the
+    // level axis so they stay inside the chart area; so do loops, which run
+    // past the outer levels before turning.
+    const margins = this._labelMargins(nodes, nodesByLevel, maxLevel, isVertical,
+      isVertical ? chartHeight : chartWidth);
+    const loopReach = (maxFlow) => (maxFlow > 0
+      ? LOOP_EXTENT + (loops.count - 1) * LOOP_STEP + (maxFlow * scale) / 2
+      : 0);
+    margins.start += loopReach(loops.maxAtStart);
+    margins.end += loopReach(loops.maxAtEnd);
+    const levelAxisLength = (isVertical ? chartHeight : chartWidth) - margins.start - margins.end;
+    const levelSpacing = levelCount > 1
+      ? (levelAxisLength - nodeWidth) / (levelCount - 1)
+      : 0;
+
+    // Space left for the nodes once the loop lanes are reserved
+    const nodeAreaLength = loops.count > 0
+      ? nodeAxisLength - loops.value * scale - laneGaps
+      : nodeAxisLength;
+    this._loopLayout = {
+      laneStart: nodeAxisOrigin + nodeAreaLength + laneGap,
+      laneGap
+    };
 
     const positions = new Map();
     for (const [level, nodeIds] of nodesByLevel) {
@@ -613,8 +774,7 @@ export class SankeyController extends DatasetController {
       const totalHeight = heights.reduce((a, b) => a + b, 0) + padding;
 
       // Center the group along the node axis
-      const nodeAxisStart = isVertical ? left : top;
-      const startPos = nodeAxisStart + (nodeAxisLength - totalHeight) / 2;
+      const startPos = nodeAxisOrigin + (nodeAreaLength - totalHeight) / 2;
 
       // Level axis position
       const levelAxisStart = (isVertical ? top : left) + margins.start;
@@ -715,7 +875,54 @@ export class SankeyController extends DatasetController {
     return margins;
   }
 
-  _computeFlows(data, nodePositions, opts) {
+  /**
+   * Space (in px) that labels drawn beside their node on the node axis need:
+   * labels above/below nodes (horizontal) or left/right of nodes (vertical).
+   * Each side is capped at a third of the axis.
+   */
+  _nodeAxisLabelMargins(nodes, nodesByLevel, maxLevel, isVertical, axisLength) {
+    const cfg = this._opts.labels;
+    const margins = { start: 0, end: 0 };
+    if (cfg.display === false) return margins;
+
+    const fontSize = cfg.font.size || 12;
+    const padding = cfg.padding ?? 5;
+    const position = cfg.position || 'auto';
+    const [startSide, endSide] = isVertical ? ['left', 'right'] : ['top', 'bottom'];
+    const levelsOn = (side) => [...nodesByLevel.keys()]
+      .filter(level => this._labelSide(position, level, maxLevel, isVertical) === side);
+
+    if (isVertical) {
+      const ctx = this.chart.ctx;
+      ctx.save();
+      ctx.font = `${fontSize}px ${cfg.font.family || 'sans-serif'}`;
+      const widest = (levels) => {
+        let max = 0;
+        for (const level of levels) {
+          for (const id of nodesByLevel.get(level)) {
+            max = Math.max(max, ctx.measureText(String(this._labelText(id, nodes.get(id), cfg))).width);
+          }
+        }
+        return max;
+      };
+      const startLevels = levelsOn(startSide);
+      const endLevels = levelsOn(endSide);
+      if (startLevels.length) margins.start = widest(startLevels) + padding;
+      if (endLevels.length) margins.end = widest(endLevels) + padding;
+      ctx.restore();
+    } else {
+      const textHeight = fontSize + padding;
+      if (levelsOn(startSide).length) margins.start = textHeight;
+      if (levelsOn(endSide).length) margins.end = textHeight;
+    }
+
+    const cap = axisLength / 3;
+    margins.start = Math.min(margins.start, cap);
+    margins.end = Math.min(margins.end, cap);
+    return margins;
+  }
+
+  _computeFlows(data, nodePositions, opts, isLoop = []) {
     const { colorMode, orientation } = opts;
     const isVertical = orientation === 'vertical';
     // Node size along the stacking axis, and the node's center on that axis
@@ -736,13 +943,18 @@ export class SankeyController extends DatasetController {
     }
 
     // Stack each node's bands in the order of the nodes at their other end,
-    // so bands never cross each other where they attach to a node.
+    // so bands never cross each other where they attach to a node. Loops go
+    // last: their lanes are past the last node.
     const stack = (byNode, otherEnd) => {
       const offsets = new Array(data.length);
+      const key = i => (isLoop[i] ? Infinity : center(nodePositions.get(data[i][otherEnd])));
       for (const [id, indices] of byNode) {
         const pos = nodePositions.get(id);
-        indices.sort((a, b) =>
-          center(nodePositions.get(data[a][otherEnd])) - center(nodePositions.get(data[b][otherEnd])) || a - b);
+        indices.sort((a, b) => {
+          const ka = key(a);
+          const kb = key(b);
+          return (ka === kb ? 0 : ka - kb) || a - b;
+        });
         let offset = 0;
         for (const i of indices) {
           offsets[i] = offset;
@@ -755,6 +967,9 @@ export class SankeyController extends DatasetController {
     const inOffsets = stack(incoming, 'from');
 
     const flows = new Array(data.length).fill(null);
+    const layout = this._loopLayout || { laneStart: 0, laneGap: 0 };
+    let laneCursor = layout.laneStart;
+    let loopIndex = 0;
     for (let i = 0; i < data.length; i++) {
       if (outOffsets[i] === undefined) continue;
       const dp = data[i];
@@ -776,6 +991,19 @@ export class SankeyController extends DatasetController {
         flowY = fromPos.y + outOffsets[i] + sourceHeight / 2;
         flowX2 = toPos.x; // left edge
         flowY2 = toPos.y + inOffsets[i] + targetHeight / 2;
+      }
+
+      let loop = null;
+      if (isLoop[i]) {
+        const reach = LOOP_EXTENT + loopIndex * LOOP_STEP;
+        const laneWidth = (sourceHeight + targetHeight) / 2;
+        loop = {
+          loopStart: (isVertical ? flowY : flowX) + reach,
+          loopEnd: (isVertical ? flowY2 : flowX2) - reach,
+          loopLane: laneCursor + laneWidth / 2
+        };
+        laneCursor += laneWidth + layout.laneGap;
+        loopIndex++;
       }
 
       // Colors: an explicit flow/dataset color wins, otherwise derive from the
@@ -807,7 +1035,11 @@ export class SankeyController extends DatasetController {
         hoverColor: dp.hoverColor ?? opts.hoverColor ?? null,
         from: dp.from,
         to: dp.to,
-        value: dp.flow
+        value: dp.flow,
+        loop: !!loop,
+        loopStart: loop ? loop.loopStart : 0,
+        loopEnd: loop ? loop.loopEnd : 0,
+        loopLane: loop ? loop.loopLane : 0
       };
     }
 
