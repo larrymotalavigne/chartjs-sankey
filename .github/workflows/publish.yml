@@ -1,12 +1,23 @@
 name: Publish to npm
 
+# Publishes whenever main carries a version that is not on npm yet: bumping
+# "version" in package.json and merging to main is the release. A GitHub
+# release or a manual run does the same (and is a no-op if the version is
+# already published). After publishing, the v<version> tag and GitHub
+# release are created from the matching CHANGELOG.md section.
 on:
+  push:
+    branches: [ main ]
   release:
     types: [published]
   workflow_dispatch:
 
+concurrency:
+  group: publish
+  cancel-in-progress: false
+
 permissions:
-  contents: read
+  contents: write  # Create the v<version> tag and GitHub release
   id-token: write  # Required for --provenance attestation
 
 jobs:
@@ -24,31 +35,73 @@ jobs:
           node-version: '22'
           registry-url: 'https://registry.npmjs.org'
 
+      - name: Check whether this version is already published
+        id: version
+        run: |
+          NAME=$(node -p "require('./package.json').name")
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          if npm view "$NAME@$VERSION" version >/dev/null 2>&1; then
+            echo "$NAME@$VERSION is already on npm: nothing to publish."
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "$NAME@$VERSION is not on npm yet: publishing."
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Install dependencies
+        if: steps.version.outputs.publish == 'true'
         run: npm ci
 
       - name: Lint
+        if: steps.version.outputs.publish == 'true'
         run: npm run lint
 
       - name: Build package
+        if: steps.version.outputs.publish == 'true'
         run: npm run build
 
       - name: Run tests
+        if: steps.version.outputs.publish == 'true'
         run: npm test
 
       - name: Check type declarations
+        if: steps.version.outputs.publish == 'true'
         run: npm run test:types
 
       - name: Check published package
+        if: steps.version.outputs.publish == 'true'
         run: npm run test:package
 
       - name: Publish to npm
+        if: steps.version.outputs.publish == 'true'
         # Pre-releases (e.g. 4.0.0-beta.1) go to the "next" dist-tag so they
         # never become "latest".
         run: |
-          VERSION=$(node -p "require('./package.json').version")
+          VERSION="${{ steps.version.outputs.version }}"
           if [[ "$VERSION" == *-* ]]; then TAG=next; else TAG=latest; fi
           echo "Publishing $VERSION with dist-tag $TAG"
           npm publish --provenance --access public --tag "$TAG"
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Create tag and GitHub release
+        if: steps.version.outputs.publish == 'true' && github.event_name != 'release'
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          # Release notes: the "## [<version>]" section of CHANGELOG.md
+          awk -v v="$VERSION" '
+            index($0, "## [" v "]") == 1 { found = 1; next }
+            found && /^## \[/ { exit }
+            found { print }
+          ' CHANGELOG.md > release-notes.md
+          PRERELEASE=""
+          if [[ "$VERSION" == *-* ]]; then PRERELEASE="--prerelease"; fi
+          if gh release view "v$VERSION" >/dev/null 2>&1; then
+            echo "Release v$VERSION already exists."
+          else
+            gh release create "v$VERSION" --target "$GITHUB_SHA" --title "v$VERSION" \
+              --notes-file release-notes.md $PRERELEASE
+          fi
+        env:
+          GH_TOKEN: ${{ github.token }}

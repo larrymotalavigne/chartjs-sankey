@@ -366,7 +366,12 @@ chartjs-sankey/
 
 ## Publishing
 
-The package is automatically published to NPM when a new GitHub release is created, or via manual workflow dispatch.
+Releasing is a version bump: when `main` carries a `version` in
+`package.json` that is not on npm yet, the Publish workflow runs the checks,
+publishes it (pre-releases such as `4.0.0-beta.1` under the `next` dist-tag,
+others under `latest`), then creates the `v<version>` tag and GitHub release
+from the matching `CHANGELOG.md` section. A GitHub release or a manual run
+does the same and is a no-op when the version is already published.
 
 ### Setup
 
@@ -376,10 +381,11 @@ The package is automatically published to NPM when a new GitHub release is creat
 ### Workflows
 
 1. **CI** (`.github/workflows/ci.yml`) - Runs on every push and PR
-   - Builds and tests on Node.js 18.x, 20.x, 22.x, 24.x
+   - Lint, build, unit, type and package checks on Node.js 22.x, 24.x, 26.x
+   - Visual regression tests in headless Chromium
 
 2. **Publish** (`.github/workflows/publish.yml`) - Publishes to NPM
-   - Triggered on new GitHub releases or manual workflow dispatch
+   - Triggered by pushes to `main` (when the version is new), GitHub releases or manual dispatch
    - Uses `--provenance` for supply chain attestation
 
 ## Browser Support
