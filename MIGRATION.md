@@ -65,6 +65,18 @@ The labels of the first and last levels used to be drawn outside the canvas
 unless you added `layout.padding`. 4.0 measures them and reserves the space,
 so a manual padding added for that purpose can be removed.
 
+### Cycles are drawn around the diagram
+
+Flows that go back to the same or an earlier level (cycles) used to be drawn
+as a reversed band across the diagram. They now leave their source, run
+through a lane below the diagram (right of it when vertical) and come back
+into their target. Each loop gets its own lane, which takes space from the
+nodes: diagrams with cycles are slightly more compact than in 3.x.
+
+Labels drawn above/below the nodes (or left/right of them when vertical),
+such as the labels of middle levels in `'auto'` mode, also get room reserved
+now.
+
 ### New label position
 
 `labels.position` accepts `'bottom'` in addition to `'auto' | 'left' |

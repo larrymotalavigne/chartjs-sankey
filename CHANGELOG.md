@@ -7,10 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [4.0.0-beta.1] - Unreleased
+## [4.0.0] - 2026-10-12
 
 First release with a frozen, documented API. See [MIGRATION.md](MIGRATION.md)
-for upgrade notes.
+for upgrade notes. (`4.0.0-beta.1` was prepared but never published; its
+changes are included here.)
 
 ### Breaking
 - New default colors: nodes use a built-in palette (previously all black) and
@@ -27,9 +28,16 @@ for upgrade notes.
 - Self-loops (`from === to`) are ignored: `isValidFlow()` returns `false` for them.
 - Package `exports` map: deep imports of files inside the package no longer
   resolve from Node or bundlers (CDN URLs are unaffected).
-- Space for the labels of the first and last levels is reserved in the layout.
+- Space for node labels is reserved in the layout: outer levels' labels on the
+  level axis, labels drawn above/below (or left/right of) nodes on the node axis.
+- Backward flows (cycles, flows into the same or an earlier level) are drawn
+  around the diagram through their own lane, which takes space in the layout.
 
 ### Added
+- Cycles: backward flows are routed around the nodes through a lane below the
+  diagram (right of it in vertical mode), with rounded corners, hit testing
+  and tooltips on the lane. They are stacked last at their ports. `FlowElement`
+  exposes `loop`, `loopStart`, `loopEnd` and `loopLane`.
 - `SankeyPlugin`: Chart.js plugin handling node hover and click callbacks;
   registered automatically on import.
 - Touch support and correct coordinates on padded/bordered canvases for clicks
@@ -59,7 +67,10 @@ for upgrade notes.
 - Click and hover listeners were never removed: after `chart.destroy()` they
   leaked and every click threw a `TypeError`. Clicks also stopped working when
   the first sankey dataset of a chart was removed.
-- Node labels of the first and last levels were drawn outside the canvas.
+- Node labels of the first and last levels were drawn outside the canvas, and
+  so were labels of middle levels whose node touches the chart edge.
+- Backward flows were drawn as a reversed band across the diagram and could
+  not be hovered or clicked.
 - Hovering a node crashed when the dataset contained a `null` data point.
 - TypeScript: the `sankey` entry of `ChartTypeRegistry` was incomplete, which
   broke Chart.js's own types and rejected options such as `label`.
@@ -67,6 +78,9 @@ for upgrade notes.
   because their container had no height.
 
 ### Internal
+- Visual regression suite (`npm run test:visual`): eight reference diagrams
+  (default, gradient, styled, vertical, cycles in both orientations, HiDPI,
+  labels) rendered in headless Chromium and compared pixel by pixel, in CI.
 - Integration tests for `SankeyController` on a real Chart.js instance (jsdom +
   recording canvas context), coverage thresholds in CI.
 - ESLint, type-declaration tests (`npm run test:types`) and a package check
@@ -113,8 +127,8 @@ Complete rewrite of the plugin.
 Initial implementation, under the package name `chartjs-plugin-sankey`
 (never published under the `@larrym` scope).
 
-[Unreleased]: https://github.com/larrymotalavigne/chartjs-sankey/compare/b0f05d6...HEAD
-[4.0.0-beta.1]: https://github.com/larrymotalavigne/chartjs-sankey/compare/b0f05d6...HEAD
+[Unreleased]: https://github.com/larrymotalavigne/chartjs-sankey/compare/v4.0.0...HEAD
+[4.0.0]: https://github.com/larrymotalavigne/chartjs-sankey/compare/eecc3dd...v4.0.0
 [3.0.0]: https://github.com/larrymotalavigne/chartjs-sankey/compare/d740294...eecc3dd
 [2.0.1]: https://github.com/larrymotalavigne/chartjs-sankey/compare/c01997e...d740294
 [2.0.0]: https://github.com/larrymotalavigne/chartjs-sankey/commits/c01997e

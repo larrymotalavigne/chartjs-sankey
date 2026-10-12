@@ -99,8 +99,10 @@ Corrige l'installabilité sans casser l'API.
       corrigés au passage : échelle `linear` non enregistrée (plantage avec un
       Chart.js « tree-shaké ») et écouteurs jamais retirés au `destroy()`.
       Le cas multi-datasets reste à couvrir avec la refonte des événements (P4).*
-- [ ] Tests de régression visuelle (snapshots PNG) sur 5–6 diagrammes de
+- [x] Tests de régression visuelle (snapshots PNG) sur 5–6 diagrammes de
       référence (énergie, budget, parcours client, vertical, gradient, cycle).
+      *Fait : `npm run test:visual` (Playwright + pixelmatch), 8 diagrammes
+      dont HiDPI et un avec labels, job CI dédié.*
 - [x] **P9** Tests de types (`tsd` ou `tsc --noEmit` sur des fixtures).
 - [x] Seuil de couverture en CI (90 % lignes, 75 % branches : V8 compte les branches différemment selon la version de Node).
 
@@ -136,13 +138,16 @@ Les changements cassants sont regroupés ici, une seule fois (détails dans
 ### Jalon D — Robustesse du rendu (≈ 1–2 semaines) → `4.0.0-beta.2`
 - [x] **P5** Mesure des labels (`ctx.measureText`) et réservation automatique
       de la marge nécessaire (ou option `labels.overflow: 'auto' | 'clip'`).
-      *Fait sur l'axe des niveaux (premier/dernier niveau). Reste : débordement
-      sur l'axe des nœuds (labels au-dessus d'un nœud collé au bord).*
-- [ ] **P6** Gestion explicite des cycles : rejeter les boucles `from === to`
+      *Fait sur les deux axes : labels des niveaux extrêmes (axe des niveaux)
+      et labels au-dessus/au-dessous ou à gauche/droite des nœuds (axe des
+      nœuds).*
+- [x] **P6** Gestion explicite des cycles : rejeter les boucles `from === to`
       avec un avertissement, dessiner les flux retour en arc (ou les exclure
       via une option `cycles: 'ignore' | 'arc'`) ; `inRange` cohérent.
-      *En partie : les boucles `from === to` sont ignorées. Reste : les flux
-      retour des cycles plus longs.*
+      *Fait : boucles `from === to` ignorées ; flux retour (cible au même
+      niveau ou à un niveau antérieur) tracés autour du diagramme dans un
+      couloir dédié (sous les nœuds, ou à droite en vertical), coins arrondis,
+      hit test et tooltip sur le couloir.*
 - [x] **P11** Tri des flux sortants/entrants par position du nœud
       opposé (comme d3-sankey) pour supprimer les croisements aux ports.
 - [x] **P12** Index d'adjacence construit une fois par `update` ; connexité de
@@ -151,7 +156,7 @@ Les changements cassants sont regroupés ici, une seule fois (détails dans
       500 nœuds / 1 800 flux), connexité calculée une fois par frame.*
 - [ ] Accessibilité minimale : texte alternatif généré (`aria-label` /
       contenu de repli listant les flux), contraste des couleurs par défaut.
-- [ ] Support du `devicePixelRatio` et du redimensionnement vérifié par les
+- [x] Support du `devicePixelRatio` et du redimensionnement vérifié par les
       tests visuels.
 
 ### Jalon E — Documentation & expérience développeur (≈ 1 semaine) → `4.0.0-rc.1`
@@ -161,7 +166,7 @@ Les changements cassants sont regroupés ici, une seule fois (détails dans
 - [ ] Site de démo (GitHub Pages) généré depuis `examples/` : un exemple par
       fonctionnalité, éditable en direct.
 - [ ] `CONTRIBUTING.md`, modèles d'issues/PR, politique de sécurité.
-- [ ] Mettre `CLAUDE.md` à jour (commandes lint, nouvelle structure dist).
+- [x] Mettre `CLAUDE.md` à jour (commandes lint, nouvelle structure dist).
 
 ### Jalon F — Release v1 stable (≈ quelques jours) → `4.0.0`
 - [ ] Automatisation des versions (Changesets ou release-please) :

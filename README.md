@@ -169,7 +169,11 @@ The dataset wins over the chart, which wins over the global defaults;
 | `nodePadding` | `number` | `10` | Space between nodes of the same level, in px |
 | `nodes` | `{ [id]: { column } }` | `null` | Pin nodes to a level (column, or row when vertical) |
 
-Room for the labels of the first and last levels is reserved automatically.
+Room for the labels is reserved automatically, so they stay inside the canvas.
+
+**Cycles.** Flows that go back to the same or an earlier level are drawn
+around the diagram: they leave the source, run through their own lane below
+the nodes (right of them in vertical mode) and come back into the target.
 
 ### Colors
 
@@ -335,6 +339,8 @@ npm run lint          # ESLint
 npm test              # Unit tests (Vitest)
 npm run test:types    # Type declaration tests (needs a build)
 npm run test:package  # CJS/ESM/UMD smoke test, publint, arethetypeswrong (needs a build)
+npm run test:visual   # Pixel comparison of reference diagrams in Chromium (needs a build;
+                      # add `-- --update` to accept intended changes)
 ```
 
 ### Project Structure
