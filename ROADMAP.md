@@ -1,13 +1,13 @@
 # ROADMAP — chartjs-sankey
 
-> Famille : Loisir · Statut : actif · Mis à jour : 26/11/2026 · Lead : —
+> Famille : Loisir · Statut : actif · Mis à jour : 27/11/2026 · Lead : —
 
 ## Résumé
 Plugin Chart.js de diagrammes de Sankey, publié sur npm sous `@larrym/chartjs-plugin-sankey` (perso / hors ATOM, sans revenu ; verdict PORTFOLIO « MAINTENIR » : paquet sain, répondre aux issues). La `4.0.0` (premier jalon « 1.0 stable », numéro retenu le 11/10 car le paquet était déjà en `3.0.0`) est sur `main` depuis le 12/10 : API figée, README, `CHANGELOG.md`, `MIGRATION.md`, régression visuelle. **npm sert toujours `3.0.0` en `latest` (constaté le 25/10 et le 26/11)** : le workflow « Publish to npm » du 12/10 a échoué à l'étape de publication. Dépôt GitHub `larrymotalavigne/chartjs-sankey`, 0 issue ouverte au 25/10.
 Plan détaillé d'origine (analyse 11/10, problèmes P1 à P15, critères de sortie, idées après la v1) : `docs/ROADMAP-historique.md`.
 
 ## En cours — Publier la 4.0.0 sur npm
-- [ ] SK1 — Publier la `4.0.0` : diagnostiquer l'échec de l'étape de publication (environnement `npm-publish`, jeton ou trusted publishing) puis relancer — done when: `npm view @larrym/chartjs-plugin-sankey dist-tags` renvoie `latest: 4.0.0` — blocked: peut demander un geste de Larry sur le compte npm
+- [ ] SK1 — Publier la `4.0.0` : cause = `NPM_TOKEN` (posé le 26/02) refusé par npm (`E404` sur le PUT du run 38281126037, tests/build/lint verts) ; workflow passé en trusted publishing (OIDC, F2) — reste le geste de Larry : déclarer le trusted publisher sur npmjs.com puis relancer « Publish to npm » (carte déposée) — done when: `npm view @larrym/chartjs-plugin-sankey dist-tags` renvoie `latest: 4.0.0` — blocked: geste de Larry sur le compte npm
 
 ## Suivant
 - [ ] SK2 — Répondre aux issues GitHub (0 ouverte au 25/10) — done when: aucune issue sans réponse
@@ -15,7 +15,7 @@ Plan détaillé d'origine (analyse 11/10, problèmes P1 à P15, critères de sor
 - [ ] E3 — Site de démo (GitHub Pages) généré depuis `examples/`, un exemple par fonctionnalité — done when: démo en ligne
 - [ ] E4 — `CONTRIBUTING.md`, modèles d'issues/PR, politique de sécurité — done when: fichiers présents
 - [ ] F1 — Automatisation des versions (Changesets ou release-please) : CHANGELOG et tags depuis les PR — done when: release générée sans édition manuelle
-- [ ] F2 — Publication npm par trusted publishing (OIDC) à la place de `NPM_TOKEN`, tag `next` pour les préversions — done when: publication sans secret
+- [ ] F2 — Publication npm par trusted publishing (OIDC) à la place de `NPM_TOKEN` : workflow préparé le 27/11 (même MR que SK1), tag `next` déjà en place pour les préversions — done when: publication sans secret réussie
 - [ ] F3 — Période de RC d'au moins 2 semaines sans bug bloquant ouvert — done when: critère observé
 - [ ] F4 — Annonce + politique de support écrite (semver strict, versions de Chart.js et navigateurs supportées) — done when: document publié
 - [ ] SK3 — Tooltip au survol d'un nœud (non cassant, reporté après la 4.0) — done when: tooltip fonctionnel
@@ -25,7 +25,7 @@ Plan détaillé d'origine (analyse 11/10, problèmes P1 à P15, critères de sor
 ## Lots pré-approuvés
 
 ## Gestes de Larry
-- [ ] Compte npm : fournir/valider le jeton ou le trusted publishing pour la `4.0.0` si SK1 le demande — pas de carte ouverte — ~2 min
+- [ ] Compte npm : fournir/valider le jeton ou le trusted publishing pour la `4.0.0` si SK1 le demande — carte #1113 — ~2 min
 
 ## Fait
 - [x] A1 — P1/P2 Sorties Rollup ESM / CJS / UMD(+min), `exports`, `unpkg`/`jsdelivr` (`sideEffects` reporté : l'import ESM enregistre le contrôleur) — jalon A, `3.1.0`
