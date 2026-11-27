@@ -25,7 +25,7 @@ Plan détaillé d'origine (analyse 11/10, problèmes P1 à P15, critères de sor
 ## Lots pré-approuvés
 
 ## Gestes de Larry
-- [ ] Compte npm : fournir/valider le jeton ou le trusted publishing pour la `4.0.0` si SK1 le demande — pas de carte ouverte — ~2 min
+- [ ] Compte npm : fournir/valider le jeton ou le trusted publishing pour la `4.0.0` si SK1 le demande — carte #1113 — ~2 min
 
 ## Fait
 - [x] A1 — P1/P2 Sorties Rollup ESM / CJS / UMD(+min), `exports`, `unpkg`/`jsdelivr` (`sideEffects` reporté : l'import ESM enregistre le contrôleur) — jalon A, `3.1.0`
