@@ -35,6 +35,10 @@ jobs:
           node-version: '22'
           registry-url: 'https://registry.npmjs.org'
 
+      # Trusted publishing (OIDC) needs npm >= 11.5.1; Node 22 ships npm 10.
+      - name: Update npm for trusted publishing
+        run: npm install -g npm@^11.5.1
+
       - name: Check whether this version is already published
         id: version
         run: |
@@ -82,8 +86,10 @@ jobs:
           if [[ "$VERSION" == *-* ]]; then TAG=next; else TAG=latest; fi
           echo "Publishing $VERSION with dist-tag $TAG"
           npm publish --provenance --access public --tag "$TAG"
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        # No NODE_AUTH_TOKEN: npm authenticates with the GitHub OIDC token
+        # (id-token: write) through the trusted publisher configured on npmjs.com
+        # (repo larrymotalavigne/chartjs-sankey, workflow publish.yml, environment
+        # npm-publish). The NPM_TOKEN of 2026-02-26 is expired/revoked (E404 on PUT).
 
       - name: Create tag and GitHub release
         if: steps.version.outputs.publish == 'true' && github.event_name != 'release'
